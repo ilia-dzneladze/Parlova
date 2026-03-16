@@ -1,0 +1,5 @@
+groq
+python-dotenv
+fastapi
+uvicorn[standard]
+pyyaml
