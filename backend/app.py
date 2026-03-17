@@ -1,7 +1,7 @@
 from .agents.texter import send_message
 
-def main_loop(question):
-    return send_message(question)
+def main_loop(question, history=[]):
+    return send_message(question, history)
 
 if __name__ == "__main__":
     question = "Hallo! Ich bin Ilia. Wie heißt du?"

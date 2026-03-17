@@ -6,6 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 type Message = {
     sender: "user" | "ai";
     content: string;
+    responseTime?: number;
 }
 
 const Chat = () => {
@@ -14,7 +15,6 @@ const Chat = () => {
         content: "Hallo! Wie geht es dir?"
     }])
     const [message, setMessage] = useState<string>("");
-    const [history, setHistory] = useState<Message[]>([]);
 
     const handleSend = async () => {
         if(!message.trim()) return;
@@ -27,24 +27,25 @@ const Chat = () => {
         setMessage("");
 
         try {
-            const response = await fetch("http://localhost:8000/api/chat", {
+            const response = await fetch("https://overabusive-nonchimerically-marvella.ngrok-free.dev/api/chat", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ message: message.trim() }),
+                headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
+                body: JSON.stringify({
+                    message: message.trim(),
+                    history: messages
+                }),
             });
             const data = await response.json();
-            console.log("DATA:", JSON.stringify(data));
-            alert(JSON.stringify(data));
             const aiMsg: Message = {
                 sender: "ai",
-                content: data.response
+                content: data.response,
+                responseTime: data.time
             }
             setMessages((prev) => [...prev, aiMsg]);
         } catch (error) {
             console.error(error);
         }
     }
-
     return(
         <KeyboardAvoidingView
             style={{ flex: 1, backgroundColor: "black" }}
@@ -63,7 +64,7 @@ const Chat = () => {
                         fontSize: 20,
                         fontWeight: "600"
                     }}>
-                        Chat With Roxis
+                        Chat With Learner
                     </Text>
                 </View>
 
@@ -87,21 +88,25 @@ const Chat = () => {
                                     paddingHorizontal: 16,
                                     paddingVertical: 8,
                                     borderRadius: 12,
+                                    maxWidth: "85%"
                                 },
                                 message.sender === "user" ? {
                                     backgroundColor: "#CC76A1",
-                                    maxWidth: "85%"
                                 } : {
                                     backgroundColor: "#DD9296",
-                                    maxWidth: "85%"
                                 }
                                 ]}>
-                                    <Text style={{ 
+                                    <Text style={{
                                         color: "white",
-                                        fontSize: 16, 
+                                        fontSize: 16,
                                     }}>
                                         {message.content}
                                     </Text>
+                                    {message.sender === "ai" && index > 0 && message.responseTime !== undefined && (
+                                        <Text style={{ color: "gray", fontSize: 11, marginTop: 4 }}>
+                                            {message.responseTime.toFixed(1)}s
+                                        </Text>
+                                    )}
                                 </View>
                             </View>
                         )
@@ -118,7 +123,7 @@ const Chat = () => {
                     paddingHorizontal: 8,
                 }}>
                     <TextInput 
-                        placeholder="Ask Anything!"
+                        placeholder="Type..."
                         placeholderTextColor={"#888B9C"}
                         multiline
                         value={message}
