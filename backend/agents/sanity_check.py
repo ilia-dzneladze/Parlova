@@ -1,1 +1,1 @@
-from llm_properties import groq_client, sanity_checker
+from ..llm_properties import groq_client, sanity_checker
