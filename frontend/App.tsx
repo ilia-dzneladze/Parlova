@@ -12,6 +12,7 @@ import ArchiveChat from "@/components/ArchiveChat";
 import HomeScreen from "@/components/HomeScreen";
 import MeScreen from "@/components/MeScreen";
 import SettingsScreen from "@/components/SettingsScreen";
+import WordList from "@/components/WordList";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -73,6 +74,7 @@ export default function App() {
           <Stack.Screen name="Chat" component={Chat} options={{ headerShown: false }} />
           <Stack.Screen name="ArchiveList" component={ArchiveList} options={{ headerShown: false }} />
           <Stack.Screen name="ArchiveChat" component={ArchiveChat} options={{ headerShown: false }} />
+          <Stack.Screen name="WordList" component={WordList} options={{ headerShown: false }} />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>

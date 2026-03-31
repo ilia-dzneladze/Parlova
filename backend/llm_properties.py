@@ -50,26 +50,29 @@ LEVEL_RULES: dict[Level, str] = {
     # B1, B2, etc.
 }
 
+DEFAULT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+
 
 def build_system_prompt(persona: Persona) -> str:
     """Compose a system prompt from persona + level rules."""
     topics_str = ", ".join(persona.topics)
     traits_str = ", ".join(persona.traits) if persona.traits else "freundlich"
 
-    return f"""Du heißt {persona.name}. {persona.bio}
-Du bist {traits_str}.
-Du führst ein Gespräch auf Deutsch mit einem Sprachlernenden.
+    return f"""
+    Du heißt {persona.name}. {persona.bio}
+    Du bist {traits_str}.
+    Du führst ein Gespräch auf Deutsch mit einem Sprachlernenden.
 
-Regeln:
-- Nur Deutsch. Keine Übersetzungen. Kein Englisch. Niemals.
-{LEVEL_RULES[persona.level]}
-- Themen: {topics_str}.
-- Stelle immer eine einfache Frage zurück.
-- Bleib in deiner Rolle als {persona.name}. Brich nie den Charakter.
-"""
+    Regeln:
+    - Nur Deutsch. Keine Übersetzungen. Kein Englisch. Niemals.
+    {LEVEL_RULES[persona.level]}
+    - Themen: {topics_str}.
+    - Stelle immer eine einfache Frage zurück.
+    - Bleib in deiner Rolle als {persona.name}. Brich nie den Charakter.
+    """
 
 
-# Agent stays generic — it doesn't know about personas
+# Agent stays generic - it doesn't know about personas
 class Agent:
     def __init__(self, model: str, system_prompt: str, max_token: int, max_context: int = 0):
         self.model = model
@@ -79,7 +82,7 @@ class Agent:
 
 
 # Factory that wires persona -> agent
-def create_texter(persona: Persona, model: str = "llama-3.1-8b-instant") -> Agent:
+def create_texter(persona: Persona, model: str = DEFAULT_MODEL) -> Agent:
     return Agent(
         model=model,
         system_prompt=build_system_prompt(persona),
@@ -98,7 +101,7 @@ penelope = Persona(
 texter_agent = create_texter(penelope)
 
 sanity_checker = Agent(
-    model="llama-3.1-8b-instant", 
+    model=DEFAULT_MODEL, 
     system_prompt="You are a German language quality checker. Rate the following German text on a scale of 1-10 for grammatical correctness and naturalness. Respond with ONLY a single integer, nothing else.",
     max_token=3
 )

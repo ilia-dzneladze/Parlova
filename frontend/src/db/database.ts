@@ -64,6 +64,21 @@ export async function initDB(): Promise<void> {
             FOREIGN KEY (archive_id) REFERENCES archived_conversations(id)
         );
     `);
+    await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS dictionary_cache (
+            word TEXT PRIMARY KEY NOT NULL,
+            translations TEXT NOT NULL,
+            part_of_speech TEXT,
+            gender TEXT,
+            example TEXT
+        );
+    `);
+    await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS dictionary_usage (
+            date TEXT PRIMARY KEY NOT NULL,
+            count INTEGER NOT NULL DEFAULT 0
+        );
+    `);
 }
 
 function rowToConversation(row: Record<string, unknown>): Conversation {
@@ -294,4 +309,95 @@ export async function deleteArchivedConversation(archiveId: string): Promise<voi
 
 export function formatTimestampForArchive(ts: number): string {
     return formatTimestampForList(ts);
+}
+
+// ---- Dictionary Cache ----
+
+export type DictEntry = {
+    word: string;
+    translations: string;
+    partOfSpeech: string | null;
+    gender: string | null;
+    example: string | null;
+};
+
+export async function searchDictCache(query: string): Promise<DictEntry[]> {
+    const rows = await db.getAllAsync(
+        "SELECT * FROM dictionary_cache WHERE word LIKE ? ORDER BY word ASC LIMIT 20",
+        `${query}%`,
+    );
+    return (rows as Record<string, unknown>[]).map(rowToDictEntry);
+}
+
+export async function getDictEntry(word: string): Promise<DictEntry | null> {
+    const row = await db.getFirstAsync<Record<string, unknown>>(
+        "SELECT * FROM dictionary_cache WHERE word = ?", word,
+    );
+    return row ? rowToDictEntry(row) : null;
+}
+
+export async function saveDictEntry(entry: DictEntry): Promise<void> {
+    await db.runAsync(
+        `INSERT OR REPLACE INTO dictionary_cache (word, translations, part_of_speech, gender, example)
+         VALUES (?, ?, ?, ?, ?)`,
+        entry.word,
+        entry.translations,
+        entry.partOfSpeech,
+        entry.gender,
+        entry.example,
+    );
+}
+
+function rowToDictEntry(row: Record<string, unknown>): DictEntry {
+    return {
+        word: row.word as string,
+        translations: row.translations as string,
+        partOfSpeech: (row.part_of_speech as string) || null,
+        gender: (row.gender as string) || null,
+        example: (row.example as string) || null,
+    };
+}
+
+// ---- Dictionary Usage ----
+
+function todayString(): string {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+export async function getDictionaryUsage(): Promise<number> {
+    const today = todayString();
+    const row = await db.getFirstAsync<{ count: number }>(
+        "SELECT count FROM dictionary_usage WHERE date = ?", today,
+    );
+    return row?.count ?? 0;
+}
+
+export async function incrementDictionaryUsage(): Promise<number> {
+    const today = todayString();
+    await db.runAsync(
+        `INSERT INTO dictionary_usage (date, count) VALUES (?, 1)
+         ON CONFLICT(date) DO UPDATE SET count = count + 1`,
+        today,
+    );
+    const row = await db.getFirstAsync<{ count: number }>(
+        "SELECT count FROM dictionary_usage WHERE date = ?", today,
+    );
+    return row?.count ?? 1;
+}
+
+export async function getAllDictEntries(): Promise<DictEntry[]> {
+    const rows = await db.getAllAsync(
+        "SELECT * FROM dictionary_cache ORDER BY word ASC",
+    );
+    return (rows as Record<string, unknown>[]).map(rowToDictEntry);
+}
+
+export async function clearDictCache(): Promise<void> {
+    await db.runAsync("DELETE FROM dictionary_cache");
+}
+
+export async function resetDictionaryUsageToday(): Promise<void> {
+    const today = todayString();
+    await db.runAsync("DELETE FROM dictionary_usage WHERE date = ?", today);
 }

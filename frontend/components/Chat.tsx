@@ -1,11 +1,17 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
+    ActivityIndicator,
     Alert,
     Animated,
+    Dimensions,
     Easing,
+    Keyboard,
     KeyboardAvoidingView,
+    Modal,
+    PanResponder,
     Platform,
+    Pressable,
     ScrollView,
     StatusBar,
     StyleSheet,
@@ -17,7 +23,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, useRoute, NavigationProp, RouteProp } from "@react-navigation/native";
 import uuid from "react-native-uuid";
-import { getMessages, saveMessages, appendMessage, archiveConversation, markAsRead, markAsUnread, ChatMessage } from "../src/db/database";
+import { getMessages, saveMessages, appendMessage, archiveConversation, markAsRead, markAsUnread, ChatMessage, getDictionaryUsage, incrementDictionaryUsage, searchDictCache, getDictEntry, saveDictEntry, DictEntry } from "../src/db/database";
 import { RootStackParamList } from "../src/types/navigation";
 import { Message, SENT_COLOR, RECV_COLOR, DEFAULT_GREETING, formatTime, isLastInGroup, isFirstInGroup, showTimestamp } from "../src/utils/chat";
 
@@ -72,6 +78,140 @@ const Chat = () => {
     const [messages, setMessages] = useState<Message[]>([]);
     const [message, setMessage] = useState<string>("");
     const [isTyping, setIsTyping] = useState(false);
+
+    // Dictionary state
+    const DAILY_LIMIT = 5;
+    const [dictVisible, setDictVisible] = useState(false);
+    const [dictWord, setDictWord] = useState("");
+    const [dictResults, setDictResults] = useState<DictEntry[]>([]);
+    const [dictSelected, setDictSelected] = useState<DictEntry | null>(null);
+    const [dictNotFound, setDictNotFound] = useState(false);
+    const [dictError, setDictError] = useState<string | null>(null);
+    const [dictLoading, setDictLoading] = useState(false);
+    const [dictCount, setDictCount] = useState(0);
+
+    useEffect(() => {
+        getDictionaryUsage().then(setDictCount);
+    }, []);
+
+    // Live search the local cache as user types
+    const handleDictSearch = useCallback(async (text: string) => {
+        setDictWord(text);
+        setDictSelected(null);
+        setDictNotFound(false);
+        setDictError(null);
+        const trimmed = text.trim().toLowerCase();
+        if (!trimmed) {
+            setDictResults([]);
+            return;
+        }
+        const results = await searchDictCache(trimmed);
+        setDictResults(results);
+        // If user typed an exact word and it's not in cache, show "not found"
+        if (results.length === 0 || !results.some(r => r.word === trimmed)) {
+            setDictNotFound(true);
+        } else {
+            setDictNotFound(false);
+        }
+    }, []);
+
+    // Select a cached word — costs a daily lookup
+    const handleSelectCached = useCallback((entry: DictEntry) => {
+        setDictSelected(entry);
+        setDictNotFound(false);
+        setDictError(null);
+    }, []);
+
+    // Add a new word via API — costs a daily lookup
+    const handleAddWord = useCallback(async () => {
+        const trimmed = dictWord.trim().toLowerCase();
+        if (!trimmed || dictCount >= DAILY_LIMIT) return;
+
+        setDictLoading(true);
+        setDictError(null);
+
+        try {
+            const resp = await fetch(`${API_BASE}/api/dictionary/${encodeURIComponent(trimmed)}`, {
+                headers: { "ngrok-skip-browser-warning": "true" },
+            });
+            if (resp.status === 404) {
+                setDictError("Word not found in PONS. Try another spelling.");
+            } else if (!resp.ok) {
+                setDictError("Lookup failed. Try again later.");
+            } else {
+                const data = await resp.json();
+                const entry: DictEntry = {
+                    word: data.word,
+                    translations: JSON.stringify(data.translations),
+                    partOfSpeech: data.partOfSpeech,
+                    gender: data.gender,
+                    example: data.example,
+                };
+                await saveDictEntry(entry);
+                setDictSelected(entry);
+                setDictNotFound(false);
+                // Refresh search results to include the new word
+                const results = await searchDictCache(trimmed);
+                setDictResults(results);
+                const newCount = await incrementDictionaryUsage();
+                setDictCount(newCount);
+            }
+        } catch {
+            setDictError("Network error. Check your connection.");
+        } finally {
+            setDictLoading(false);
+        }
+    }, [dictWord, dictCount]);
+
+    const SHEET_HEIGHT = Dimensions.get("window").height * 0.55;
+    const sheetAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
+
+    const openDictionary = useCallback(() => {
+        setDictWord("");
+        setDictResults([]);
+        setDictSelected(null);
+        setDictNotFound(false);
+        setDictError(null);
+        setDictVisible(true);
+        Animated.spring(sheetAnim, {
+            toValue: 0,
+            useNativeDriver: true,
+            damping: 20,
+            stiffness: 200,
+        }).start();
+    }, []);
+
+    const closeDictionary = useCallback(() => {
+        Keyboard.dismiss();
+        Animated.timing(sheetAnim, {
+            toValue: SHEET_HEIGHT,
+            duration: 250,
+            useNativeDriver: true,
+            easing: Easing.in(Easing.ease),
+        }).start(() => setDictVisible(false));
+    }, []);
+
+    const panResponder = useRef(
+        PanResponder.create({
+            onStartShouldSetPanResponder: () => true,
+            onMoveShouldSetPanResponder: (_, g) => g.dy > 5,
+            onPanResponderMove: (_, g) => {
+                if (g.dy > 0) sheetAnim.setValue(g.dy);
+            },
+            onPanResponderRelease: (_, g) => {
+                if (g.dy > 80 || g.vy > 0.5) {
+                    closeDictionary();
+                } else {
+                    Animated.spring(sheetAnim, {
+                        toValue: 0,
+                        useNativeDriver: true,
+                        damping: 20,
+                        stiffness: 200,
+                    }).start();
+                }
+            },
+        })
+    ).current;
 
     useEffect(() => {
         mountedRef.current = true;
@@ -286,6 +426,9 @@ const Chat = () => {
 
                 {/* Input Bar */}
                 <View style={styles.inputBar}>
+                    <TouchableOpacity onPress={openDictionary} style={styles.dictBtn}>
+                        <Ionicons name="book-outline" size={24} color={dictCount >= DAILY_LIMIT ? "#C7C7CC" : "#007AFF"} />
+                    </TouchableOpacity>
                     <View style={styles.inputPill}>
                         <TextInput
                             placeholder="iMessage"
@@ -307,6 +450,128 @@ const Chat = () => {
                         <Ionicons name="arrow-up" size={22} color="#FFF" />
                     </TouchableOpacity>
                 </View>
+
+                {/* Dictionary Modal */}
+                <Modal visible={dictVisible} animationType="fade" transparent>
+                    <KeyboardAvoidingView
+                        style={styles.modalOverlay}
+                        behavior={Platform.OS === "ios" ? "padding" : "height"}
+                    >
+                        <Pressable
+                            style={styles.modalDismissArea}
+                            onPress={closeDictionary}
+                        />
+                        <Animated.View style={[styles.modalSheet, { transform: [{ translateY: sheetAnim }] }]}>
+                         {/* Drag handle */}
+                         <View {...panResponder.panHandlers} style={styles.modalHandleArea}>
+                            <View style={styles.modalHandle} />
+                         </View>
+
+                         <ScrollView keyboardShouldPersistTaps="handled" bounces={false}>
+                            <View style={styles.modalHeader}>
+                                <Text style={styles.modalTitle}>Dictionary</Text>
+                                <TouchableOpacity onPress={closeDictionary}>
+                                    <Ionicons name="close-circle-outline" size={28} color="#8E8E93" />
+                                </TouchableOpacity>
+                            </View>
+
+                            <Text style={styles.dictCounter}>
+                                {dictCount >= DAILY_LIMIT
+                                    ? "Daily limit reached. Come back tomorrow!"
+                                    : `${dictCount} / ${DAILY_LIMIT} lookups used today`}
+                            </Text>
+
+                            {/* Search bar */}
+                            <View style={styles.dictInputPill}>
+                                <Ionicons name="search" size={16} color="#8E8E93" style={{ marginRight: 8 }} />
+                                <TextInput
+                                    placeholder="Search your dictionary..."
+                                    placeholderTextColor="#8E8E93"
+                                    value={dictWord}
+                                    onChangeText={handleDictSearch}
+                                    autoCapitalize="none"
+                                    autoCorrect={false}
+                                    style={[styles.dictInput, { flex: 1 }]}
+                                />
+                            </View>
+
+                            {/* Error */}
+                            {dictError && (
+                                <Text style={styles.dictError}>{dictError}</Text>
+                            )}
+
+                            {/* Selected word result */}
+                            {dictSelected && (() => {
+                                const translations: string[] = JSON.parse(dictSelected.translations);
+                                return (
+                                    <View style={styles.dictResultCard}>
+                                        <View style={styles.dictResultHeader}>
+                                            <Text style={styles.dictResultWord}>{dictSelected.word}</Text>
+                                            {(dictSelected.partOfSpeech || dictSelected.gender) && (
+                                                <Text style={styles.dictResultMeta}>
+                                                    {[dictSelected.partOfSpeech, dictSelected.gender].filter(Boolean).join(" · ")}
+                                                </Text>
+                                            )}
+                                        </View>
+                                        <View style={styles.dictTranslations}>
+                                            {translations.map((t, i) => (
+                                                <View key={i} style={styles.dictTransRow}>
+                                                    <Text style={styles.dictBullet}>•</Text>
+                                                    <Text style={styles.dictTransText}>{t}</Text>
+                                                </View>
+                                            ))}
+                                        </View>
+                                        {dictSelected.example && (
+                                            <View style={styles.dictExampleBox}>
+                                                <Text style={styles.dictExampleLabel}>Example</Text>
+                                                <Text style={styles.dictExampleText}>{dictSelected.example}</Text>
+                                            </View>
+                                        )}
+                                    </View>
+                                );
+                            })()}
+
+                            {/* Search results list (when no word is selected) */}
+                            {!dictSelected && dictWord.trim().length > 0 && (
+                                <View style={styles.dictListContainer}>
+                                    {dictResults.map((entry) => (
+                                        <TouchableOpacity
+                                            key={entry.word}
+                                            style={styles.dictListRow}
+                                            onPress={() => handleSelectCached(entry)}
+                                        >
+                                            <Text style={styles.dictListWord}>{entry.word}</Text>
+                                            <Text style={styles.dictListPreview} numberOfLines={1}>
+                                                {JSON.parse(entry.translations).slice(0, 2).join(", ")}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    ))}
+
+                                    {/* Add new word button */}
+                                    {dictNotFound && dictCount < DAILY_LIMIT && (
+                                        <TouchableOpacity
+                                            style={styles.dictAddRow}
+                                            onPress={handleAddWord}
+                                            disabled={dictLoading}
+                                        >
+                                            {dictLoading ? (
+                                                <ActivityIndicator size="small" color="#007AFF" />
+                                            ) : (
+                                                <>
+                                                    <Ionicons name="add-circle-outline" size={22} color="#007AFF" />
+                                                    <Text style={styles.dictAddText}>
+                                                        Look up "{dictWord.trim().toLowerCase()}"
+                                                    </Text>
+                                                </>
+                                            )}
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
+                            )}
+                         </ScrollView>
+                        </Animated.View>
+                    </KeyboardAvoidingView>
+                </Modal>
             </SafeAreaView>
         </KeyboardAvoidingView>
     );
@@ -470,5 +735,185 @@ const styles = StyleSheet.create({
     },
     sendInactive: {
         backgroundColor: "#C7C7CC",
+    },
+
+    /* Dictionary button */
+    dictBtn: {
+        width: 32,
+        height: 32,
+        alignItems: "center",
+        justifyContent: "center",
+        marginBottom: 2,
+    },
+
+    /* Modal */
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: "rgba(0,0,0,0.35)",
+        justifyContent: "flex-end",
+    },
+    modalDismissArea: {
+        flex: 1,
+    },
+    modalSheet: {
+        backgroundColor: "#FFF",
+        borderTopLeftRadius: 16,
+        borderTopRightRadius: 16,
+        paddingHorizontal: 20,
+        paddingBottom: 40,
+        maxHeight: Dimensions.get("window").height * 0.66,
+    },
+    modalHandleArea: {
+        paddingTop: 8,
+        paddingBottom: 4,
+        alignItems: "center",
+    },
+    modalHandle: {
+        width: 36,
+        height: 5,
+        borderRadius: 3,
+        backgroundColor: "#D1D1D6",
+    },
+    modalHeader: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 4,
+    },
+    modalTitle: {
+        fontSize: 20,
+        fontWeight: "600",
+        color: "#000",
+    },
+
+    /* Counter */
+    dictCounter: {
+        fontSize: 13,
+        color: "#8E8E93",
+        marginBottom: 14,
+    },
+
+    /* Search */
+    dictInputPill: {
+        flexDirection: "row",
+        alignItems: "center",
+        borderRadius: 12,
+        backgroundColor: "#F2F2F7",
+        paddingHorizontal: 12,
+        marginBottom: 12,
+    },
+    dictInput: {
+        fontSize: 16,
+        color: "#000",
+        height: 40,
+    },
+
+    /* Search results list */
+    dictListContainer: {
+        backgroundColor: "#FFF",
+        borderRadius: 12,
+        overflow: "hidden",
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: "#C6C6C8",
+    },
+    dictListRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: "#C6C6C8",
+    },
+    dictListWord: {
+        fontSize: 17,
+        fontWeight: "500",
+        color: "#000",
+    },
+    dictListPreview: {
+        fontSize: 15,
+        color: "#8E8E93",
+        flex: 1,
+        textAlign: "right",
+        marginLeft: 12,
+    },
+    dictAddRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+    },
+    dictAddText: {
+        fontSize: 16,
+        color: "#007AFF",
+        fontWeight: "500",
+    },
+
+    /* Error */
+    dictError: {
+        fontSize: 15,
+        color: "#FF3B30",
+        textAlign: "center",
+        marginTop: 8,
+    },
+
+    /* Result card */
+    dictResultCard: {
+        backgroundColor: "#F2F2F7",
+        borderRadius: 12,
+        padding: 16,
+    },
+    dictResultHeader: {
+        marginBottom: 10,
+    },
+    dictResultWord: {
+        fontSize: 22,
+        fontWeight: "700",
+        color: "#000",
+    },
+    dictResultMeta: {
+        fontSize: 14,
+        color: "#8E8E93",
+        marginTop: 2,
+    },
+    dictTranslations: {
+        marginBottom: 10,
+    },
+    dictTransRow: {
+        flexDirection: "row",
+        gap: 6,
+        marginBottom: 3,
+    },
+    dictBullet: {
+        fontSize: 16,
+        color: "#007AFF",
+        lineHeight: 22,
+    },
+    dictTransText: {
+        fontSize: 16,
+        color: "#000",
+        lineHeight: 22,
+        flex: 1,
+    },
+    dictExampleBox: {
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: "#C6C6C8",
+        paddingTop: 10,
+    },
+    dictExampleLabel: {
+        fontSize: 12,
+        fontWeight: "600",
+        color: "#8E8E93",
+        textTransform: "uppercase",
+        letterSpacing: 0.5,
+        marginBottom: 4,
+    },
+    dictExampleText: {
+        fontSize: 15,
+        color: "#3C3C43",
+        fontStyle: "italic",
+        lineHeight: 20,
     },
 });
