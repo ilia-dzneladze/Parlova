@@ -80,6 +80,7 @@ const Chat = () => {
     const [messages, setMessages] = useState<Message[]>([]);
     const [message, setMessage] = useState<string>("");
     const [isTyping, setIsTyping] = useState(false);
+    const [tappedId, setTappedId] = useState<string | null>(null);
 
     // Dictionary state
     const DAILY_LIMIT = 5;
@@ -165,15 +166,26 @@ const Chat = () => {
         }
     }, [dictWord, dictCount]);
 
-    const SHEET_HEIGHT = Dimensions.get("window").height * 0.55;
+    const SCREEN_HEIGHT = Dimensions.get("window").height;
+    const SHEET_HEIGHT = SCREEN_HEIGHT * 0.55;
     const sheetAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
 
-    const openDictionary = useCallback(() => {
-        setDictWord("");
-        setDictResults([]);
+    const openDictionary = useCallback((prefill?: string) => {
         setDictSelected(null);
         setDictNotFound(false);
         setDictError(null);
+        if (prefill) {
+            const word = prefill.trim().toLowerCase();
+            setDictWord(word);
+            // Trigger local search for the prefilled word
+            searchDictCache(word).then((results) => {
+                setDictResults(results);
+                setDictNotFound(!results.some(r => r.word === word));
+            });
+        } else {
+            setDictWord("");
+            setDictResults([]);
+        }
         setDictVisible(true);
         Animated.spring(sheetAnim, {
             toValue: 0,
@@ -424,11 +436,15 @@ const Chat = () => {
                                         {formatTime(msg.timestamp)}
                                     </Text>
                                 )}
-                                <View style={[
-                                    styles.messageRow,
-                                    isUser ? styles.rowUser : styles.rowAI,
-                                    { marginTop: first || tsVisible ? 8 : 2 },
-                                ]}>
+                                <TouchableOpacity
+                                    activeOpacity={0.8}
+                                    onPress={() => setTappedId(prev => prev === msg.id ? null : msg.id)}
+                                    style={[
+                                        styles.messageRow,
+                                        isUser ? styles.rowUser : styles.rowAI,
+                                        { marginTop: first || tsVisible ? 8 : 2 },
+                                    ]}
+                                >
                                     <View style={styles.bubbleWrap}>
                                         <View style={[
                                             styles.bubble,
@@ -436,22 +452,36 @@ const Chat = () => {
                                             last && isUser && { borderBottomRightRadius: 4 },
                                             last && !isUser && { borderBottomLeftRadius: 4 },
                                         ]}>
-                                            <Text style={[
-                                                styles.bubbleText,
-                                                isUser ? styles.textSent : styles.textRecv,
-                                            ]}>
-                                                {msg.content}
-                                            </Text>
+                                            {!isUser ? (
+                                                <Text style={[styles.bubbleText, styles.textRecv]}>
+                                                    {msg.content.split(/(\s+)/).map((part, j) => {
+                                                        if (/^\s+$/.test(part)) return part;
+                                                        const clean = part.replace(/[^a-zA-ZäöüÄÖÜß-]/g, "");
+                                                        return (
+                                                            <Text
+                                                                key={j}
+                                                                onLongPress={clean.length > 1 ? () => openDictionary(clean) : undefined}
+                                                                style={styles.textRecv}
+                                                            >
+                                                                {part}
+                                                            </Text>
+                                                        );
+                                                    })}
+                                                </Text>
+                                            ) : (
+                                                <Text style={[styles.bubbleText, styles.textSent]}>
+                                                    {msg.content}
+                                                </Text>
+                                            )}
                                         </View>
-
                                     </View>
 
-                                    {msg.sender === "ai" && i > 0 && msg.responseTime !== undefined && (
-                                        <Text style={styles.responseTime}>
-                                            {msg.responseTime.toFixed(1)}s
+                                    {tappedId === msg.id && (
+                                        <Text style={styles.tappedTime}>
+                                            {formatTime(msg.timestamp)}
                                         </Text>
                                     )}
-                                </View>
+                                </TouchableOpacity>
                             </React.Fragment>
                         );
                     })}
@@ -460,7 +490,7 @@ const Chat = () => {
 
                 {/* Input Bar */}
                 <View style={styles.inputBar}>
-                    <TouchableOpacity onPress={openDictionary} style={styles.dictBtn}>
+                    <TouchableOpacity onPress={() => openDictionary()} style={styles.dictBtn}>
                         <Ionicons name="book-outline" size={24} color={dictCount >= DAILY_LIMIT ? "#C7C7CC" : "#007AFF"} />
                     </TouchableOpacity>
                     <View style={styles.inputPill}>
@@ -495,7 +525,14 @@ const Chat = () => {
                             style={styles.modalDismissArea}
                             onPress={closeDictionary}
                         />
-                        <Animated.View style={[styles.modalSheet, { transform: [{ translateY: sheetAnim }] }]}>
+                        <Animated.View style={[
+                            styles.modalSheet,
+                            {
+                                transform: [{ translateY: sheetAnim }],
+                                maxHeight: SCREEN_HEIGHT * 0.55,
+                                paddingBottom: 40,
+                            },
+                        ]}>
                          {/* Drag handle */}
                          <View {...panResponder.panHandlers} style={styles.modalHandleArea}>
                             <View style={styles.modalHandle} />
@@ -722,12 +759,12 @@ const styles = StyleSheet.create({
         backgroundColor: "#8E8E93",
     },
 
-    /* Response time */
-    responseTime: {
+    /* Tapped timestamp */
+    tappedTime: {
         fontSize: 11,
         color: "#8E8E93",
         marginTop: 2,
-        paddingLeft: 4,
+        paddingHorizontal: 4,
     },
 
     /* Input bar */
@@ -794,8 +831,6 @@ const styles = StyleSheet.create({
         borderTopLeftRadius: 16,
         borderTopRightRadius: 16,
         paddingHorizontal: 20,
-        paddingBottom: 40,
-        maxHeight: Dimensions.get("window").height * 0.66,
     },
     modalHandleArea: {
         paddingTop: 8,
