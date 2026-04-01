@@ -1,0 +1,40 @@
+{
+  "restoreTerminals.terminals": [
+    {
+      "splitTerminals": [
+        {
+          "name": "Backend",
+          "commands": ["./start_backend.sh"]
+        },
+        {
+          "name": "Frontend",
+          "commands": ["cd frontend && npx expo start --tunnel"]
+        }
+      ]
+    },
+    {
+      "splitTerminals": [
+        {
+          "name": "Claude",
+          "commands": ["claude"]
+        }
+      ]
+    },
+    {
+      "splitTerminals": [
+        {
+          "name": "Git",
+          "commands": []
+        }
+      ]
+    },
+    {
+      "splitTerminals": [
+        {
+          "name": "Clean",
+          "commands": []
+        }
+      ]
+    }
+  ]
+}

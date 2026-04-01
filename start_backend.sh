@@ -56,9 +56,6 @@ echo ""
 echo "  Backend : $NGROK_URL"
 echo "  Chat.tsx patched with new URL"
 echo ""
-echo "  Now run in a second terminal:"
-echo "    cd frontend && npx expo start --tunnel"
-echo ""
 echo "  Ctrl+C to stop everything"
 
 trap "echo 'Stopping...'; kill $UVICORN_PID $NGROK_PID 2>/dev/null" EXIT INT
