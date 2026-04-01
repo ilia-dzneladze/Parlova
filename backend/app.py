@@ -1,15 +1,6 @@
 from .agents.texter import send_message
+from .llm_properties import Persona
 
-def main_loop(question, history=[]):
-    return send_message(question, history)
-
-if __name__ == "__main__":
-    question = "Hallo! Ich bin Ilia. Wie heißt du?"
-    message_count = 0
-
-    while send_message(question) == 1 and message_count < 5:
-        question = input()
-        message_count += 1
-
-    if message_count == 5:
-        print("Vielen Dank!")
+def main_loop(question, history=[], persona: Persona | None = None):
+    response, follow_up, elapsed = send_message(question, history, persona)
+    return response, follow_up, elapsed

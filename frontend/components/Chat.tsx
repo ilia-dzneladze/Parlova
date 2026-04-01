@@ -23,7 +23,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, useRoute, NavigationProp, RouteProp } from "@react-navigation/native";
 import uuid from "react-native-uuid";
-import { getMessages, saveMessages, appendMessage, archiveConversation, markAsRead, markAsUnread, ChatMessage, getDictionaryUsage, incrementDictionaryUsage, searchDictCache, getDictEntry, saveDictEntry, DictEntry } from "../src/db/database";
+import { getMessages, saveMessages, appendMessage, archiveConversation, markAsRead, markAsUnread, getConversation, ChatMessage, getDictionaryUsage, incrementDictionaryUsage, searchDictCache, getDictEntry, saveDictEntry, DictEntry } from "../src/db/database";
+import { Conversation } from "../src/types/conversation";
 import { RootStackParamList } from "../src/types/navigation";
 import { Message, SENT_COLOR, RECV_COLOR, DEFAULT_GREETING, formatTime, isLastInGroup, isFirstInGroup, showTimestamp } from "../src/utils/chat";
 
@@ -70,10 +71,11 @@ const TypingIndicator = () => (
 const Chat = () => {
     const navigator = useNavigation<NavigationProp<RootStackParamList>>();
     const route = useRoute<RouteProp<RootStackParamList, "Chat">>();
-    const conversationId = route.params.conversationId;
+    const { conversationId, conversationName } = route.params;
     const scrollRef = useRef<ScrollView>(null);
     const messagesRef = useRef<Message[]>([]);
     const mountedRef = useRef(true);
+    const [conversation, setConversation] = useState<Conversation | null>(null);
 
     const [messages, setMessages] = useState<Message[]>([]);
     const [message, setMessage] = useState<string>("");
@@ -225,6 +227,8 @@ const Chat = () => {
     useEffect(() => {
         (async () => {
             await markAsRead(conversationId);
+            const convo = await getConversation(conversationId);
+            if (convo) setConversation(convo);
             const saved = await getMessages(conversationId);
             if (saved.length > 0) {
                 setMessages(saved.map((m) => ({
@@ -285,6 +289,11 @@ const Chat = () => {
                         body: JSON.stringify({
                             message: trimmed,
                             history: currentHistory,
+                            persona: conversation ? {
+                                name: conversation.name,
+                                persona: conversation.persona,
+                                level: conversation.level,
+                            } : undefined,
                         }),
                     }),
                     minDelay,
@@ -301,11 +310,36 @@ const Chat = () => {
                 if (mountedRef.current) {
                     setIsTyping(false);
                     setMessages((prev) => [...prev, aiMsg]);
+
+                    // Show follow-up question as a second bubble after a brief pause
+                    if (data.follow_up) {
+                        setIsTyping(true);
+                        await new Promise(r => setTimeout(r, 800 + Math.random() * 700));
+                        if (mountedRef.current) {
+                            const followUpMsg: Message = {
+                                id: uuid.v4() as string,
+                                sender: "ai",
+                                content: data.follow_up,
+                                timestamp: Date.now(),
+                            };
+                            setIsTyping(false);
+                            setMessages((prev) => [...prev, followUpMsg]);
+                        }
+                    }
                 } else {
                     await appendMessage({
                         ...aiMsg,
                         conversationId,
                     });
+                    if (data.follow_up) {
+                        await appendMessage({
+                            id: uuid.v4() as string,
+                            conversationId,
+                            sender: "ai",
+                            content: data.follow_up,
+                            timestamp: Date.now(),
+                        });
+                    }
                     await markAsUnread(conversationId);
                 }
             } catch (error) {
@@ -364,7 +398,7 @@ const Chat = () => {
                     <TouchableOpacity onPress={() => navigator.goBack()} style={styles.backButton}>
                         <Ionicons name="chevron-back" size={28} color={SENT_COLOR} />
                     </TouchableOpacity>
-                    <Text style={styles.headerTitle}>Penelope</Text>
+                    <Text style={styles.headerTitle}>{conversationName}</Text>
                     <TouchableOpacity onPress={handleEndConversation} style={styles.endButton}>
                         <Text style={styles.endButtonText}>End</Text>
                     </TouchableOpacity>

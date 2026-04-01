@@ -1,6 +1,6 @@
 export type RootStackParamList = {
     Tabs: undefined;
-    Chat: { conversationId: string };
+    Chat: { conversationId: string; conversationName: string };
     ArchiveList: undefined;
     ArchiveChat: { archiveId: string };
     WordList: undefined;

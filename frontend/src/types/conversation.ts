@@ -3,7 +3,7 @@ export interface Conversation {
     name: string;
     avatarColor: string;
     level: string;
-    bio: string;
+    persona: string;
     lastMessage: string;
     timestamp: string;
     unread: boolean;
@@ -15,7 +15,7 @@ export interface ArchivedConversation {
     name: string;
     avatarColor: string;
     level: string;
-    bio: string;
+    persona: string;
     lastMessage: string;
     messageCount: number;
     archivedAt: number;

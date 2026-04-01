@@ -22,7 +22,7 @@ export async function initDB(): Promise<void> {
             name TEXT NOT NULL,
             avatar_color TEXT NOT NULL,
             level TEXT NOT NULL DEFAULT 'A1',
-            bio TEXT NOT NULL DEFAULT '',
+            persona TEXT NOT NULL DEFAULT '',
             last_message TEXT NOT NULL DEFAULT '',
             timestamp TEXT NOT NULL DEFAULT '',
             unread INTEGER NOT NULL DEFAULT 0
@@ -46,7 +46,7 @@ export async function initDB(): Promise<void> {
             name TEXT NOT NULL,
             avatar_color TEXT NOT NULL,
             level TEXT NOT NULL DEFAULT 'A1',
-            bio TEXT NOT NULL DEFAULT '',
+            persona TEXT NOT NULL DEFAULT '',
             last_message TEXT NOT NULL DEFAULT '',
             message_count INTEGER NOT NULL DEFAULT 0,
             archived_at INTEGER NOT NULL,
@@ -79,6 +79,17 @@ export async function initDB(): Promise<void> {
             count INTEGER NOT NULL DEFAULT 0
         );
     `);
+
+    // Migrate existing tables: add persona column if missing
+    const addColumnSafe = async (table: string, column: string, def: string) => {
+        try {
+            await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT NOT NULL DEFAULT '${def}'`);
+        } catch {
+            // Column already exists — ignore
+        }
+    };
+    await addColumnSafe("conversations", "persona", "");
+    await addColumnSafe("archived_conversations", "persona", "");
 }
 
 function rowToConversation(row: Record<string, unknown>): Conversation {
@@ -87,7 +98,7 @@ function rowToConversation(row: Record<string, unknown>): Conversation {
         name: row.name as string,
         avatarColor: row.avatar_color as string,
         level: row.level as string,
-        bio: row.bio as string,
+        persona: (row.persona as string) || "",
         lastMessage: row.last_message as string,
         timestamp: row.timestamp as string,
         unread: (row.unread as number) === 1,
@@ -99,15 +110,22 @@ export async function getConversations(): Promise<Conversation[]> {
     return (rows as Record<string, unknown>[]).map(rowToConversation);
 }
 
+export async function getConversation(id: string): Promise<Conversation | null> {
+    const row = await db.getFirstAsync<Record<string, unknown>>(
+        "SELECT * FROM conversations WHERE id = ?", id,
+    );
+    return row ? rowToConversation(row) : null;
+}
+
 export async function insertConversation(convo: Conversation): Promise<void> {
     await db.runAsync(
-        `INSERT OR REPLACE INTO conversations (id, name, avatar_color, level, bio, last_message, timestamp, unread)
+        `INSERT OR REPLACE INTO conversations (id, name, avatar_color, level, persona, last_message, timestamp, unread)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         convo.id,
         convo.name,
         convo.avatarColor,
         convo.level,
-        convo.bio,
+        convo.persona,
         convo.lastMessage,
         convo.timestamp,
         convo.unread ? 1 : 0,
@@ -139,8 +157,27 @@ export async function seedIfEmpty(): Promise<void> {
     const result = await db.getFirstAsync<{ count: number }>("SELECT COUNT(*) as count FROM conversations");
     if (result && result.count > 0) return;
 
+    const PENELOPE_PERSONA = [
+        "Penelope is a 20-year-old French girl who moved to Berlin six months ago to study art.",
+        "She is learning German herself — she is an A1 speaker, just like the user. She is NOT a teacher.",
+        "She lives in a small apartment in Kreuzberg with a roommate.",
+        "She loves painting, going to galleries, listening to music (especially indie and electronic), clubbing on weekends, and finding cute cafés around the city.",
+        "She has a cat named Minou that she brought from France.",
+        "Personality: she is warm, bubbly, and genuinely curious about other people. She asks follow-up questions because she actually wants to know the answer. She also loves sharing stories about her own life — her classes, her weekend plans, funny things that happened to her.",
+        "She sometimes mixes in a French word when she forgets the German one (like \"oh, comment dit-on... ich meine...\"), which makes her feel more real.",
+    ].join(" ");
+
     const seeds: Conversation[] = [
-        { id: uuid.v4() as string, name: "Penelope", avatarColor: "#007AFF", level: "A1", bio: "Deine Deutschlehrerin", lastMessage: DEFAULT_GREETING, timestamp: "10:32", unread: true },
+        {
+            id: uuid.v4() as string,
+            name: "Penelope",
+            avatarColor: "#007AFF",
+            level: "A1",
+            persona: PENELOPE_PERSONA,
+            lastMessage: DEFAULT_GREETING,
+            timestamp: "10:32",
+            unread: true,
+        },
     ];
 
     for (const convo of seeds) {
@@ -222,14 +259,14 @@ export async function archiveConversation(conversationId: string): Promise<strin
 
     await db.withTransactionAsync(async () => {
         await db.runAsync(
-            `INSERT INTO archived_conversations (id, conversation_id, name, avatar_color, level, bio, last_message, message_count, archived_at)
+            `INSERT INTO archived_conversations (id, conversation_id, name, avatar_color, level, persona, last_message, message_count, archived_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             archiveId,
             conversationId,
             convo.name as string,
             convo.avatar_color as string,
             convo.level as string,
-            convo.bio as string,
+            (convo.persona as string) || "",
             (lastMsg?.content as string) ?? "",
             msgCount.count,
             Date.now(),
@@ -263,7 +300,7 @@ export async function getArchivedConversations(): Promise<ArchivedConversation[]
         name: row.name as string,
         avatarColor: row.avatar_color as string,
         level: row.level as string,
-        bio: row.bio as string,
+        persona: (row.persona as string) || "",
         lastMessage: row.last_message as string,
         messageCount: row.message_count as number,
         archivedAt: row.archived_at as number,

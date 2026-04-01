@@ -22,7 +22,7 @@ const ConversationRow = ({ item, isLast }: { item: Conversation; isLast: boolean
         <TouchableOpacity
             style={styles.row}
             activeOpacity={0.6}
-            onPress={() => navigation.navigate("Chat", { conversationId: item.id })}
+            onPress={() => navigation.navigate("Chat", { conversationId: item.id, conversationName: item.name })}
         >
             {/* Unread dot */}
             <View style={styles.unreadCol}>

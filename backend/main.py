@@ -1,9 +1,10 @@
 import os
 import re
+from typing import Optional
 
 from pydantic import BaseModel
 from .app import main_loop
-from .llm_properties import texter_agent
+from .llm_properties import Persona, Level
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
@@ -21,26 +22,33 @@ app.add_middleware(
 PONS_API_KEY = os.getenv("PONS_API_KEY", "")
 
 
+class PersonaRequest(BaseModel):
+    name: str
+    persona: str
+    level: str = "A1"
+
 class MessageRequest(BaseModel):
     message: str
     history: list = []
-
-class ModelRequest(BaseModel):
-    model: str
+    persona: Optional[PersonaRequest] = None
 
 
 @app.post("/api/chat")
 async def chat(request: MessageRequest):
-    response_text, elapsed = main_loop(request.message, request.history)
+    persona = None
+    if request.persona:
+        p = request.persona
+        persona = Persona(
+            name=p.name,
+            persona=p.persona,
+            level=Level(p.level),
+        )
+    response_text, follow_up, elapsed = main_loop(request.message, request.history, persona)
     return {
         "response": response_text,
+        "follow_up": follow_up,
         "time": elapsed
     }
-
-@app.post("/api/model")
-async def set_model(request: ModelRequest):
-    texter_agent.model = request.model
-    return {"model": texter_agent.model}
 
 
 @app.get("/api/dictionary/{word}")
