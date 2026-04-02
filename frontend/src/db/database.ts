@@ -90,6 +90,17 @@ export async function initDB(): Promise<void> {
     };
     await addColumnSafe("conversations", "persona", "");
     await addColumnSafe("archived_conversations", "persona", "");
+
+    // question_freq: how often this persona asks follow-up questions (0.0–1.0)
+    const addRealColumnSafe = async (table: string, column: string, def: number) => {
+        try {
+            await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} REAL NOT NULL DEFAULT ${def}`);
+        } catch {
+            // Column already exists — ignore
+        }
+    };
+    await addRealColumnSafe("conversations", "question_freq", 0.5);
+    await addRealColumnSafe("archived_conversations", "question_freq", 0.5);
 }
 
 function rowToConversation(row: Record<string, unknown>): Conversation {
@@ -99,6 +110,7 @@ function rowToConversation(row: Record<string, unknown>): Conversation {
         avatarColor: row.avatar_color as string,
         level: row.level as string,
         persona: (row.persona as string) || "",
+        questionFreq: (row.question_freq as number) ?? 0.5,
         lastMessage: row.last_message as string,
         timestamp: row.timestamp as string,
         unread: (row.unread as number) === 1,
@@ -119,13 +131,14 @@ export async function getConversation(id: string): Promise<Conversation | null> 
 
 export async function insertConversation(convo: Conversation): Promise<void> {
     await db.runAsync(
-        `INSERT OR REPLACE INTO conversations (id, name, avatar_color, level, persona, last_message, timestamp, unread)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT OR REPLACE INTO conversations (id, name, avatar_color, level, persona, question_freq, last_message, timestamp, unread)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         convo.id,
         convo.name,
         convo.avatarColor,
         convo.level,
         convo.persona,
+        convo.questionFreq,
         convo.lastMessage,
         convo.timestamp,
         convo.unread ? 1 : 0,
@@ -174,6 +187,7 @@ export async function seedIfEmpty(): Promise<void> {
             avatarColor: "#007AFF",
             level: "A1",
             persona: PENELOPE_PERSONA,
+            questionFreq: 0.7,
             lastMessage: DEFAULT_GREETING,
             timestamp: "10:32",
             unread: true,
@@ -259,14 +273,15 @@ export async function archiveConversation(conversationId: string): Promise<strin
 
     await db.withTransactionAsync(async () => {
         await db.runAsync(
-            `INSERT INTO archived_conversations (id, conversation_id, name, avatar_color, level, persona, last_message, message_count, archived_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO archived_conversations (id, conversation_id, name, avatar_color, level, persona, question_freq, last_message, message_count, archived_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             archiveId,
             conversationId,
             convo.name as string,
             convo.avatar_color as string,
             convo.level as string,
             (convo.persona as string) || "",
+            (convo.question_freq as number) ?? 0.5,
             (lastMsg?.content as string) ?? "",
             msgCount.count,
             Date.now(),
@@ -301,6 +316,7 @@ export async function getArchivedConversations(): Promise<ArchivedConversation[]
         avatarColor: row.avatar_color as string,
         level: row.level as string,
         persona: (row.persona as string) || "",
+        questionFreq: (row.question_freq as number) ?? 0.5,
         lastMessage: row.last_message as string,
         messageCount: row.message_count as number,
         archivedAt: row.archived_at as number,

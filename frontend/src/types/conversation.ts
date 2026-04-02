@@ -4,6 +4,7 @@ export interface Conversation {
     avatarColor: string;
     level: string;
     persona: string;
+    questionFreq: number;
     lastMessage: string;
     timestamp: string;
     unread: boolean;
@@ -16,6 +17,7 @@ export interface ArchivedConversation {
     avatarColor: string;
     level: string;
     persona: string;
+    questionFreq: number;
     lastMessage: string;
     messageCount: number;
     archivedAt: number;

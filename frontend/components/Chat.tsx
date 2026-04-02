@@ -305,6 +305,7 @@ const Chat = () => {
                                 name: conversation.name,
                                 persona: conversation.persona,
                                 level: conversation.level,
+                                question_freq: conversation.questionFreq,
                             } : undefined,
                         }),
                     }),

@@ -26,6 +26,7 @@ class PersonaRequest(BaseModel):
     name: str
     persona: str
     level: str = "A1"
+    question_freq: float = 0.5
 
 class MessageRequest(BaseModel):
     message: str
@@ -42,6 +43,7 @@ async def chat(request: MessageRequest):
             name=p.name,
             persona=p.persona,
             level=Level(p.level),
+            question_freq=p.question_freq,
         )
     response_text, follow_up, elapsed = main_loop(request.message, request.history, persona)
     return {
