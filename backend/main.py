@@ -32,6 +32,7 @@ class MessageRequest(BaseModel):
     message: str
     history: list = []
     persona: Optional[PersonaRequest] = None
+    message_count: int = 0
 
 
 @app.post("/api/chat")
@@ -45,11 +46,14 @@ async def chat(request: MessageRequest):
             level=Level(p.level),
             question_freq=p.question_freq,
         )
-    response_text, follow_up, elapsed = main_loop(request.message, request.history, persona)
+    response_text, follow_up, wrap_up, elapsed = main_loop(
+        request.message, request.history, persona, request.message_count,
+    )
     return {
         "response": response_text,
         "follow_up": follow_up,
-        "time": elapsed
+        "wrap_up": wrap_up,
+        "time": elapsed,
     }
 
 

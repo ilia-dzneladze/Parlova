@@ -291,6 +291,9 @@ const Chat = () => {
         setMessage("");
         setIsTyping(true);
 
+        // Count user messages (including the one we just added)
+        const userMsgCount = currentHistory.filter((m) => m.sender === "user").length + 1;
+
         const doFetch = async () => {
             const minDelay = new Promise(r => setTimeout(r, 1500));
             try {
@@ -301,6 +304,7 @@ const Chat = () => {
                         body: JSON.stringify({
                             message: trimmed,
                             history: currentHistory,
+                            message_count: userMsgCount,
                             persona: conversation ? {
                                 name: conversation.name,
                                 persona: conversation.persona,
@@ -324,7 +328,7 @@ const Chat = () => {
                     setIsTyping(false);
                     setMessages((prev) => [...prev, aiMsg]);
 
-                    // Show follow-up question as a second bubble after a brief pause
+                    // Show follow-up / goodbye as a second bubble after a brief pause
                     if (data.follow_up) {
                         setIsTyping(true);
                         await new Promise(r => setTimeout(r, 800 + Math.random() * 700));
@@ -337,6 +341,29 @@ const Chat = () => {
                             };
                             setIsTyping(false);
                             setMessages((prev) => [...prev, followUpMsg]);
+                        }
+                    }
+
+                    // Auto-archive if the agent wrapped up the conversation
+                    if (data.wrap_up && mountedRef.current) {
+                        await new Promise(r => setTimeout(r, 2000));
+                        if (mountedRef.current) {
+                            const msgs: ChatMessage[] = messagesRef.current.map((m) => ({
+                                id: m.id,
+                                conversationId,
+                                sender: m.sender,
+                                content: m.content,
+                                responseTime: m.responseTime,
+                                timestamp: m.timestamp,
+                            }));
+                            await saveMessages(conversationId, msgs);
+                            await archiveConversation(conversationId);
+                            setMessages([{
+                                id: uuid.v4() as string,
+                                sender: "ai",
+                                content: DEFAULT_GREETING,
+                                timestamp: Date.now(),
+                            }]);
                         }
                     }
                 } else {
@@ -353,7 +380,11 @@ const Chat = () => {
                             timestamp: Date.now(),
                         });
                     }
-                    await markAsUnread(conversationId);
+                    if (data.wrap_up) {
+                        await archiveConversation(conversationId);
+                    } else {
+                        await markAsUnread(conversationId);
+                    }
                 }
             } catch (error) {
                 if (mountedRef.current) {

@@ -55,7 +55,74 @@ FOLLOW_UP_PROMPT = (
     "Example: \"Studierst du auch?\""
 )
 
-def send_message(question, history=[], persona: Persona | None = None):
+CONCLUSION_CHECK_PROMPT = (
+    "You are reviewing a German text conversation between two friends. "
+    "Has the conversation reached a natural stopping point? "
+    "A natural stopping point means: they said goodbye, the topic fizzled out, "
+    "or the exchange feels complete.\n"
+    "\n"
+    "Reply with ONLY one word: YES or NO."
+)
+
+GOODBYE_PROMPT = (
+    "You are {name}. You've been texting in German with a friend and it's time to go. "
+    "Send a natural, casual goodbye message in German — like you actually have somewhere to be. "
+    "Mention something you need to do (class, errands, meeting a friend, etc.).\n"
+    "\n"
+    "Rules:\n"
+    "- Write ONLY the goodbye message in German. Nothing else.\n"
+    "- {level_rules}\n"
+    "- Keep it warm and casual. You're friends.\n"
+    "\n"
+    "Example: \"Okay, ich muss jetzt los! Wir schreiben später, ja? 😊\"\n"
+    "Example: \"Hey, ich muss zum Unterricht. Bis bald! ✌️\""
+)
+
+_WRAP_UP_MIN = 10   # earliest we start checking
+_WRAP_UP_FORCE = 20  # always wrap up at this count
+
+
+def _should_check_conclusion(message_count: int) -> bool:
+    """Between 10-19 messages: random chance that increases with count. At 20+: always."""
+    if message_count >= _WRAP_UP_FORCE:
+        return True
+    if message_count >= _WRAP_UP_MIN:
+        # Linear ramp: 10% at msg 10 → 90% at msg 19
+        chance = 0.1 + 0.8 * (message_count - _WRAP_UP_MIN) / (_WRAP_UP_FORCE - _WRAP_UP_MIN - 1)
+        return random.random() < chance
+    return False
+
+
+def _check_conclusion(chat_messages: list[dict], model: str) -> bool:
+    """Ask the LLM whether the conversation has reached a natural end."""
+    check_messages = chat_messages + [
+        {"role": "system", "content": CONCLUSION_CHECK_PROMPT},
+    ]
+    result = groq_client.chat.completions.create(
+        model=model,
+        messages=check_messages,  # type: ignore
+        max_tokens=5,
+    )
+    answer = (result.choices[0].message.content or "").strip().upper()
+    return answer.startswith("YES")
+
+
+def _generate_goodbye(chat_messages: list[dict], persona: Persona, model: str) -> str:
+    """Generate a casual goodbye message in-character."""
+    level_rules = LEVEL_RULES.get(persona.level, LEVEL_RULES[Level.A1])
+    goodbye_system = GOODBYE_PROMPT.format(name=persona.name, level_rules=level_rules)
+    goodbye_messages = chat_messages + [
+        {"role": "system", "content": goodbye_system},
+    ]
+    result = groq_client.chat.completions.create(
+        model=model,
+        messages=goodbye_messages,  # type: ignore
+        max_tokens=80,
+    )
+    return result.choices[0].message.content or ""
+
+
+def send_message(question, history=[], persona: Persona | None = None, message_count: int = 0):
     if persona is None:
         persona = Persona(
             name="Penelope",
@@ -81,18 +148,28 @@ def send_message(question, history=[], persona: Persona | None = None):
 
     # Guard: if the model was jailbroken, replace its output
     if _looks_off_topic(response_text): # type: ignore
-        return JAILBREAK_WARNING, "", time.time() - start
+        return JAILBREAK_WARNING, "", False, time.time() - start
+
+    # Check if it's time to wrap up
+    full_messages = chat_messages + [{"role": "assistant", "content": response_text}]
+    if _should_check_conclusion(message_count):
+        force = message_count >= _WRAP_UP_FORCE
+        concluded = _check_conclusion(full_messages, agent.model)
+        if concluded or force:
+            goodbye = _generate_goodbye(full_messages, persona, agent.model)
+            if _looks_off_topic(goodbye):  # type: ignore
+                goodbye = "Okay, ich muss jetzt los! Bis bald! 😊"
+            return response_text, goodbye, True, time.time() - start
 
     # Roll the dice — not every persona asks a follow-up every time
     if random.random() >= persona.question_freq:
-        return response_text, "", time.time() - start
+        return response_text, "", False, time.time() - start
 
-    # Second call: follow-up question about the user
+    # Follow-up question about the user
     level_rules = LEVEL_RULES.get(persona.level, LEVEL_RULES[Level.A1])
     follow_up_system = FOLLOW_UP_PROMPT.format(level_rules=level_rules)
 
-    follow_up_messages = chat_messages + [
-        {"role": "assistant", "content": response_text},
+    follow_up_messages = full_messages + [
         {"role": "system", "content": follow_up_system},
     ]
 
@@ -106,4 +183,4 @@ def send_message(question, history=[], persona: Persona | None = None):
     if _looks_off_topic(follow_up_text): # type: ignore
         follow_up_text = ""
 
-    return response_text, follow_up_text, time.time() - start
+    return response_text, follow_up_text, False, time.time() - start
