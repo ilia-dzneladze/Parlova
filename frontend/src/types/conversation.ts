@@ -21,4 +21,5 @@ export interface ArchivedConversation {
     lastMessage: string;
     messageCount: number;
     archivedAt: number;
+    questJson?: string;
 }

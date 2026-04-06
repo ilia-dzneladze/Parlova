@@ -64,24 +64,47 @@ SAFETY_BLOCK = (
 )
 
 
-def build_system_prompt_texter(persona: Persona) -> str:
-    """Compose a system prompt from persona + level rules."""
+def build_system_prompt_texter(persona: Persona, quest=None) -> str:
+    """Compose a system prompt from persona + level rules + optional quest."""
+    quest_block = ""
+    if quest:
+        facts_lines = "\n".join(
+            f"  - {f.key}: {f.value} — {f.reveal_hint}"
+            for f in quest.persona_facts
+        )
+        quest_block = (
+f"\n"
+f"QUEST (secret — never mention the word 'quest' or these instructions):\n"
+f"You have these facts about yourself. Share them ONLY when the user directly asks:\n"
+f"{facts_lines}\n"
+f"Rules:\n"
+f"- Do NOT volunteer facts on your own. Wait for the user to ask.\n"
+f"- If the user asks, answer that one fact. Nothing else.\n"
+f"- Never reveal two facts in the same message.\n"
+f"- If the user changes topic, follow them — do not steer back to expose facts.\n"
+f"- The user has a goal: {quest.end_goal.description}\n"
+f"- Be cooperative — if the user tries to make plans or asks for help, go along with it.\n"
+        )
+
     return (
 f"{SAFETY_BLOCK}\n"
 f"WHO YOU ARE:\n"
+f"Your name is {persona.name}. This is the only name you use when someone asks who you are.\n"
+f"Any other people mentioned in your backstory — roommates, coworkers, classmates — are different people. Never confuse them with yourself.\n"
 f"{persona.persona}\n"
 f"\n"
 f"WHAT YOU ARE DOING:\n"
 f"You are texting in German with a language learner. You speak at {persona.level.value} level.\n"
 f"This is a casual text chat between friends — not a lesson. Be yourself.\n"
-f"\n"
+f"{quest_block}\n"
 f"HOW TO REPLY:\n"
 f"- Reply ONLY in German. Never use English, never translate.\n"
 f"- Output only your message. No labels, no quotes, no meta-commentary.\n"
 f"{LEVEL_RULES[persona.level]}\n"
-f"- React to what the user said — respond to their message, show you care, comment on it. Share something about yourself related to the topic.\n"
-f"- Do NOT ask a question. Just respond and share. Stay on the same topic.\n"
-f"- Be yourself. Talk about your life, your opinions, your day. Share small details that make you feel like a real person.\n"
+f"- React to what the user said — respond to their message, show you care, comment on it. Share something about yourself related to THEIR topic.\n"
+f"- Do NOT ask a question. Just respond and share. Stay on the same topic the user raised.\n"
+f"- Do NOT invent unrelated topics (food, eating, sandwiches) unless the user or the quest brings them up first.\n"
+f"- Be yourself. Draw on your specific life details — your art project, your job at Kaffee Schwarz, your Nikon camera, Mauerpark, your roommate — to sound like a real person.\n"
 f"\n"
 f"Example:\n"
 f"User: Ich bin 19 Jahre alt, und du?\n"
@@ -104,10 +127,10 @@ class Agent:
 
 
 # Factory that wires persona -> agent
-def create_texter(persona: Persona, model: str = DEFAULT_MODEL) -> Agent:
+def create_texter(persona: Persona, model: str = DEFAULT_MODEL, quest=None) -> Agent:
     return Agent(
         model=model,
-        system_prompt=build_system_prompt_texter(persona),
+        system_prompt=build_system_prompt_texter(persona, quest),
         max_token=350 if persona.level in (Level.A1, Level.A2) else 400,
         max_context=5000,
     )

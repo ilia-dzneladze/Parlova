@@ -23,10 +23,13 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, useRoute, NavigationProp, RouteProp } from "@react-navigation/native";
 import uuid from "react-native-uuid";
-import { getMessages, saveMessages, appendMessage, archiveConversation, markAsRead, markAsUnread, getConversation, ChatMessage, getDictionaryUsage, incrementDictionaryUsage, searchDictCache, getDictEntry, saveDictEntry, DictEntry } from "../src/db/database";
+import { getMessages, saveMessages, appendMessage, archiveConversation, markAsRead, markAsUnread, getConversation, saveQuestForConversation, getQuestForConversation, clearQuestForConversation, ChatMessage, getDictionaryUsage, incrementDictionaryUsage, searchDictCache, getDictEntry, saveDictEntry, DictEntry } from "../src/db/database";
 import { Conversation } from "../src/types/conversation";
 import { RootStackParamList } from "../src/types/navigation";
+import { Quest, EvaluationResult } from "../src/types/quest";
 import { Message, SENT_COLOR, RECV_COLOR, DEFAULT_GREETING, formatTime, isLastInGroup, isFirstInGroup, showTimestamp } from "../src/utils/chat";
+import QuestBriefing from "./QuestBriefing";
+import QuestDebrief from "./QuestDebrief";
 
 const API_BASE = 'https://overabusive-nonchimerically-marvella.ngrok-free.dev';
 
@@ -82,6 +85,12 @@ const Chat = () => {
     const [isTyping, setIsTyping] = useState(false);
     const [tappedId, setTappedId] = useState<string | null>(null);
 
+    // Quest state
+    const [quest, setQuest] = useState<Quest | null>(null);
+    const questRef = useRef<Quest | null>(null);
+    const [showBriefing, setShowBriefing] = useState(false);
+    const [showDebrief, setShowDebrief] = useState(false);
+
     // Dictionary state
     const DAILY_LIMIT = 5;
     const [dictVisible, setDictVisible] = useState(false);
@@ -89,6 +98,7 @@ const Chat = () => {
     const [dictResults, setDictResults] = useState<DictEntry[]>([]);
     const [dictSelected, setDictSelected] = useState<DictEntry | null>(null);
     const [dictNotFound, setDictNotFound] = useState(false);
+    const [dictDirection, setDictDirection] = useState<"de" | "en">("de");
     const [dictError, setDictError] = useState<string | null>(null);
     const [dictLoading, setDictLoading] = useState(false);
     const [dictCount, setDictCount] = useState(0);
@@ -98,7 +108,7 @@ const Chat = () => {
     }, []);
 
     // Live search the local cache as user types
-    const handleDictSearch = useCallback(async (text: string) => {
+    const handleDictSearch = useCallback(async (text: string, dir?: "de" | "en") => {
         setDictWord(text);
         setDictSelected(null);
         setDictNotFound(false);
@@ -108,15 +118,15 @@ const Chat = () => {
             setDictResults([]);
             return;
         }
-        const results = await searchDictCache(trimmed);
+        const direction = dir ?? dictDirection;
+        const results = await searchDictCache(trimmed, direction);
         setDictResults(results);
-        // If user typed an exact word and it's not in cache, show "not found"
         if (results.length === 0 || !results.some(r => r.word === trimmed)) {
             setDictNotFound(true);
         } else {
             setDictNotFound(false);
         }
-    }, []);
+    }, [dictDirection]);
 
     // Select a cached word — costs a daily lookup
     const handleSelectCached = useCallback((entry: DictEntry) => {
@@ -134,9 +144,10 @@ const Chat = () => {
         setDictError(null);
 
         try {
-            const resp = await fetch(`${API_BASE}/api/dictionary/${encodeURIComponent(trimmed)}`, {
-                headers: { "ngrok-skip-browser-warning": "true" },
-            });
+            const resp = await fetch(
+                `${API_BASE}/api/dictionary/${encodeURIComponent(trimmed)}?direction=${dictDirection}`,
+                { headers: { "ngrok-skip-browser-warning": "true" } },
+            );
             if (resp.status === 404) {
                 setDictError("Word not found in PONS. Try another spelling.");
             } else if (!resp.ok) {
@@ -150,11 +161,10 @@ const Chat = () => {
                     gender: data.gender,
                     example: data.example,
                 };
-                await saveDictEntry(entry);
+                await saveDictEntry(entry, dictDirection);
                 setDictSelected(entry);
                 setDictNotFound(false);
-                // Refresh search results to include the new word
-                const results = await searchDictCache(trimmed);
+                const results = await searchDictCache(trimmed, dictDirection);
                 setDictResults(results);
                 const newCount = await incrementDictionaryUsage();
                 setDictCount(newCount);
@@ -164,7 +174,7 @@ const Chat = () => {
         } finally {
             setDictLoading(false);
         }
-    }, [dictWord, dictCount]);
+    }, [dictWord, dictCount, dictDirection]);
 
     const SCREEN_HEIGHT = Dimensions.get("window").height;
     const SHEET_HEIGHT = SCREEN_HEIGHT * 0.55;
@@ -174,11 +184,12 @@ const Chat = () => {
         setDictSelected(null);
         setDictNotFound(false);
         setDictError(null);
+        // Long-press from a message always uses DE→EN
         if (prefill) {
+            setDictDirection("de");
             const word = prefill.trim().toLowerCase();
             setDictWord(word);
-            // Trigger local search for the prefilled word
-            searchDictCache(word).then((results) => {
+            searchDictCache(word, "de").then((results) => {
                 setDictResults(results);
                 setDictNotFound(!results.some(r => r.word === word));
             });
@@ -233,6 +244,10 @@ const Chat = () => {
     }, []);
 
     useEffect(() => {
+        questRef.current = quest;
+    }, [quest]);
+
+    useEffect(() => {
         messagesRef.current = messages;
     }, [messages]);
 
@@ -242,6 +257,10 @@ const Chat = () => {
             const convo = await getConversation(conversationId);
             if (convo) setConversation(convo);
             const saved = await getMessages(conversationId);
+            // "Fresh" = no messages, or only the default greeting
+            const isFresh = saved.length === 0
+                || (saved.length === 1 && saved[0].content === DEFAULT_GREETING);
+
             if (saved.length > 0) {
                 setMessages(saved.map((m) => ({
                     id: m.id,
@@ -257,6 +276,39 @@ const Chat = () => {
                     content: DEFAULT_GREETING,
                     timestamp: Date.now(),
                 }]);
+            }
+
+            if (isFresh) {
+                // Generate a new quest and persist it to SQLite
+                try {
+                    const resp = await fetch(`${API_BASE}/api/quest/generate`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "ngrok-skip-browser-warning": "true",
+                        },
+                        body: JSON.stringify({
+                            level: convo?.level ?? "A1",
+                            persona_name: convo?.name ?? conversationName,
+                        }),
+                    });
+                    if (resp.ok) {
+                        const questData: Quest = await resp.json();
+                        await saveQuestForConversation(conversationId, questData);
+                        setQuest(questData);
+                        questRef.current = questData;
+                        setShowBriefing(true);
+                    }
+                } catch {
+                    // Quest generation failed — proceed without a quest
+                }
+            } else {
+                // Restore quest from SQLite (handles app backgrounding / restart)
+                const savedQuest = await getQuestForConversation(conversationId);
+                if (savedQuest) {
+                    setQuest(savedQuest);
+                    questRef.current = savedQuest;
+                }
             }
         })();
     }, [conversationId]);
@@ -305,6 +357,7 @@ const Chat = () => {
                             message: trimmed,
                             history: currentHistory,
                             message_count: userMsgCount,
+                            quest: questRef.current ?? undefined,
                             persona: conversation ? {
                                 name: conversation.name,
                                 persona: conversation.persona,
@@ -344,26 +397,30 @@ const Chat = () => {
                         }
                     }
 
-                    // Auto-archive if the agent wrapped up the conversation
+                    // Conversation wrapped up — show debrief if quest active, otherwise archive
                     if (data.wrap_up && mountedRef.current) {
                         await new Promise(r => setTimeout(r, 2000));
                         if (mountedRef.current) {
-                            const msgs: ChatMessage[] = messagesRef.current.map((m) => ({
-                                id: m.id,
-                                conversationId,
-                                sender: m.sender,
-                                content: m.content,
-                                responseTime: m.responseTime,
-                                timestamp: m.timestamp,
-                            }));
-                            await saveMessages(conversationId, msgs);
-                            await archiveConversation(conversationId);
-                            setMessages([{
-                                id: uuid.v4() as string,
-                                sender: "ai",
-                                content: DEFAULT_GREETING,
-                                timestamp: Date.now(),
-                            }]);
+                            if (quest) {
+                                setShowDebrief(true);
+                            } else {
+                                const msgs: ChatMessage[] = messagesRef.current.map((m) => ({
+                                    id: m.id,
+                                    conversationId,
+                                    sender: m.sender,
+                                    content: m.content,
+                                    responseTime: m.responseTime,
+                                    timestamp: m.timestamp,
+                                }));
+                                await saveMessages(conversationId, msgs);
+                                await archiveConversation(conversationId);
+                                setMessages([{
+                                    id: uuid.v4() as string,
+                                    sender: "ai",
+                                    content: DEFAULT_GREETING,
+                                    timestamp: Date.now(),
+                                }]);
+                            }
                         }
                     }
                 } else {
@@ -381,6 +438,7 @@ const Chat = () => {
                         });
                     }
                     if (data.wrap_up) {
+                        await clearQuestForConversation(conversationId);
                         await archiveConversation(conversationId);
                     } else {
                         await markAsUnread(conversationId);
@@ -396,33 +454,62 @@ const Chat = () => {
         doFetch();
     };
 
+    const handleDebriefComplete = async (_result: EvaluationResult) => {
+        setShowDebrief(false);
+        const msgs: ChatMessage[] = messagesRef.current.map((m) => ({
+            id: m.id,
+            conversationId,
+            sender: m.sender,
+            content: m.content,
+            responseTime: m.responseTime,
+            timestamp: m.timestamp,
+        }));
+        await saveMessages(conversationId, msgs);
+        await clearQuestForConversation(conversationId);
+        await archiveConversation(conversationId);
+        setQuest(null);
+        questRef.current = null;
+        setMessages([{
+            id: uuid.v4() as string,
+            sender: "ai",
+            content: DEFAULT_GREETING,
+            timestamp: Date.now(),
+        }]);
+    };
+
     const handleEndConversation = () => {
         Alert.alert(
             "End Conversation",
-            "This conversation will be archived. Start a new one?",
+            quest
+                ? "Ready for your debrief?"
+                : "This conversation will be archived. Start a new one?",
             [
                 { text: "Cancel", style: "cancel" },
                 {
-                    text: "End",
-                    style: "destructive",
+                    text: quest ? "Debrief" : "End",
+                    style: quest ? "default" : "destructive",
                     onPress: async () => {
-                        const msgs: ChatMessage[] = messagesRef.current.map((m) => ({
-                            id: m.id,
-                            conversationId,
-                            sender: m.sender,
-                            content: m.content,
-                            responseTime: m.responseTime,
-                            timestamp: m.timestamp,
-                        }));
-                        await saveMessages(conversationId, msgs);
-                        await archiveConversation(conversationId);
-                        setMessages([{
-                            id: uuid.v4() as string,
-                            sender: "ai",
-                            content: DEFAULT_GREETING,
-                            timestamp: Date.now(),
-                        }]);
                         setIsTyping(false);
+                        if (quest) {
+                            setShowDebrief(true);
+                        } else {
+                            const msgs: ChatMessage[] = messagesRef.current.map((m) => ({
+                                id: m.id,
+                                conversationId,
+                                sender: m.sender,
+                                content: m.content,
+                                responseTime: m.responseTime,
+                                timestamp: m.timestamp,
+                            }));
+                            await saveMessages(conversationId, msgs);
+                            await archiveConversation(conversationId);
+                            setMessages([{
+                                id: uuid.v4() as string,
+                                sender: "ai",
+                                content: DEFAULT_GREETING,
+                                timestamp: Date.now(),
+                            }]);
+                        }
                     },
                 },
             ],
@@ -443,9 +530,16 @@ const Chat = () => {
                         <Ionicons name="chevron-back" size={28} color={SENT_COLOR} />
                     </TouchableOpacity>
                     <Text style={styles.headerTitle}>{conversationName}</Text>
-                    <TouchableOpacity onPress={handleEndConversation} style={styles.endButton}>
-                        <Text style={styles.endButtonText}>End</Text>
-                    </TouchableOpacity>
+                    <View style={styles.headerRight}>
+                        {quest && (
+                            <TouchableOpacity onPress={() => setShowBriefing(true)} style={styles.questBtn}>
+                                <Ionicons name="document-text-outline" size={20} color="#007AFF" />
+                            </TouchableOpacity>
+                        )}
+                        <TouchableOpacity onPress={handleEndConversation} style={styles.endButton}>
+                            <Text style={styles.endButtonText}>End</Text>
+                        </TouchableOpacity>
+                    </View>
                 </View>
 
                 {/* Chat Messages */}
@@ -547,6 +641,24 @@ const Chat = () => {
                     </TouchableOpacity>
                 </View>
 
+                {/* Quest Briefing */}
+                {quest && (
+                    <QuestBriefing
+                        quest={quest}
+                        visible={showBriefing}
+                        onDismiss={() => setShowBriefing(false)}
+                    />
+                )}
+
+                {/* Quest Debrief */}
+                {quest && (
+                    <QuestDebrief
+                        quest={quest}
+                        visible={showDebrief}
+                        onComplete={handleDebriefComplete}
+                    />
+                )}
+
                 {/* Dictionary Modal */}
                 <Modal visible={dictVisible} animationType="fade" transparent>
                     <KeyboardAvoidingView
@@ -578,6 +690,40 @@ const Chat = () => {
                                 </TouchableOpacity>
                             </View>
 
+                            {/* Direction toggle */}
+                            <View style={styles.dictToggleRow}>
+                                <TouchableOpacity
+                                    style={[styles.dictToggleBtn, dictDirection === "de" && styles.dictToggleActive]}
+                                    onPress={() => {
+                                        setDictDirection("de");
+                                        setDictWord("");
+                                        setDictResults([]);
+                                        setDictSelected(null);
+                                        setDictNotFound(false);
+                                        setDictError(null);
+                                    }}
+                                >
+                                    <Text style={[styles.dictToggleText, dictDirection === "de" && styles.dictToggleTextActive]}>
+                                        DE → EN
+                                    </Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.dictToggleBtn, dictDirection === "en" && styles.dictToggleActive]}
+                                    onPress={() => {
+                                        setDictDirection("en");
+                                        setDictWord("");
+                                        setDictResults([]);
+                                        setDictSelected(null);
+                                        setDictNotFound(false);
+                                        setDictError(null);
+                                    }}
+                                >
+                                    <Text style={[styles.dictToggleText, dictDirection === "en" && styles.dictToggleTextActive]}>
+                                        EN → DE
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
+
                             <Text style={styles.dictCounter}>
                                 {dictCount >= DAILY_LIMIT
                                     ? "Daily limit reached. Come back tomorrow!"
@@ -588,7 +734,7 @@ const Chat = () => {
                             <View style={styles.dictInputPill}>
                                 <Ionicons name="search" size={16} color="#8E8E93" style={{ marginRight: 8 }} />
                                 <TextInput
-                                    placeholder="Search your dictionary..."
+                                    placeholder={dictDirection === "de" ? "Search German words..." : "Search English words..."}
                                     placeholderTextColor="#8E8E93"
                                     value={dictWord}
                                     onChangeText={handleDictSearch}
@@ -712,9 +858,17 @@ const styles = StyleSheet.create({
         fontWeight: "600",
         color: "#000",
     },
-    endButton: {
+    headerRight: {
         position: "absolute",
         right: 12,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+    },
+    questBtn: {
+        padding: 4,
+    },
+    endButton: {
         padding: 4,
     },
     endButtonText: {
@@ -884,6 +1038,37 @@ const styles = StyleSheet.create({
     modalTitle: {
         fontSize: 20,
         fontWeight: "600",
+        color: "#000",
+    },
+
+    /* Direction toggle */
+    dictToggleRow: {
+        flexDirection: "row",
+        backgroundColor: "#F2F2F7",
+        borderRadius: 10,
+        padding: 2,
+        marginBottom: 12,
+    },
+    dictToggleBtn: {
+        flex: 1,
+        paddingVertical: 7,
+        borderRadius: 8,
+        alignItems: "center",
+    },
+    dictToggleActive: {
+        backgroundColor: "#FFF",
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+        elevation: 2,
+    },
+    dictToggleText: {
+        fontSize: 14,
+        fontWeight: "500",
+        color: "#8E8E93",
+    },
+    dictToggleTextActive: {
         color: "#000",
     },
 

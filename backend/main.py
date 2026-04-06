@@ -5,6 +5,7 @@ from typing import Optional
 from pydantic import BaseModel
 from .app import main_loop
 from .llm_properties import Persona, Level
+from .quests import generate_quest, quest_from_dict, Quest
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
@@ -33,6 +34,7 @@ class MessageRequest(BaseModel):
     history: list = []
     persona: Optional[PersonaRequest] = None
     message_count: int = 0
+    quest: Optional[dict] = None  # full quest object from device SQLite
 
 
 @app.post("/api/chat")
@@ -46,8 +48,9 @@ async def chat(request: MessageRequest):
             level=Level(p.level),
             question_freq=p.question_freq,
         )
+    quest = quest_from_dict(request.quest) if request.quest else None
     response_text, follow_up, wrap_up, elapsed = main_loop(
-        request.message, request.history, persona, request.message_count,
+        request.message, request.history, persona, request.message_count, quest=quest,
     )
     return {
         "response": response_text,
@@ -57,16 +60,41 @@ async def chat(request: MessageRequest):
     }
 
 
+# ── Quest endpoints ─────────────────────────────────────────────────────
+
+class QuestGenerateRequest(BaseModel):
+    level: str = "A1"
+    persona_name: str = "Penelope"
+
+
+@app.post("/api/quest/generate")
+async def quest_generate(request: QuestGenerateRequest):
+    try:
+        level = Level(request.level)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid level: {request.level}")
+
+    quest = generate_quest(level, request.persona_name)
+    # Return the full quest (including answers) — device SQLite is the store.
+    return quest.to_dict(request.persona_name)
+
+
 @app.get("/api/dictionary/{word}")
-async def dictionary_lookup(word: str):
+async def dictionary_lookup(word: str, direction: str = "de"):
+    """
+    direction="de"  → German → English  (l=deen)
+    direction="en"  → English → German  (l=ende)
+    """
     if not PONS_API_KEY:
         raise HTTPException(status_code=500, detail="PONS API key not configured")
+
+    lang_pair = "deen" if direction == "de" else "ende"
 
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 "https://api.pons.com/v1/dictionary",
-                params={"l": "deen", "q": word, "language": "de"},
+                params={"l": lang_pair, "q": word},
                 headers={"X-Secret": PONS_API_KEY},
                 timeout=10.0,
             )

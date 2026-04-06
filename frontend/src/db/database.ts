@@ -1,6 +1,7 @@
 import * as SQLite from "expo-sqlite";
 import uuid from "react-native-uuid";
 import { Conversation, ArchivedConversation } from "../types/conversation";
+import { Quest } from "../types/quest";
 import { DEFAULT_GREETING } from "../utils/chat";
 
 export type ChatMessage = {
@@ -101,6 +102,18 @@ export async function initDB(): Promise<void> {
     };
     await addRealColumnSafe("conversations", "question_freq", 0.5);
     await addRealColumnSafe("archived_conversations", "question_freq", 0.5);
+
+    // quest_json: stores the active quest object (with answers) for each conversation
+    await addColumnSafe("conversations", "quest_json", "");
+
+    // Persist quest in archives so past missions are reviewable
+    await addColumnSafe("archived_conversations", "quest_json", "");
+
+    // Persona migration: always keep Penelope's persona up to date with the latest version
+    await db.runAsync(
+        "UPDATE conversations SET persona = ?, question_freq = 0.7 WHERE name = 'Penelope'",
+        PENELOPE_PERSONA,
+    );
 }
 
 function rowToConversation(row: Record<string, unknown>): Conversation {
@@ -166,19 +179,26 @@ export async function updateLastMessage(id: string, message: string, timestamp: 
     );
 }
 
+const PENELOPE_PERSONA =
+    "Pénélope \"Penny\" Dupont is a 20-year-old French woman originally from Lyon. " +
+    "She moved to Berlin two years ago for its vibrant art scene and now lives in Neukölln. " +
+    "She shares a cramped, high-ceilinged Altbau apartment with Lukas, a 22-year-old German structural engineering student — " +
+    "they are polar opposites (she is chaotic and spontaneous, he is hyper-organized) but get along surprisingly well over late-night beers. " +
+    "She is in her 2nd year at UdK Berlin, studying Mixed Media and Installation Art; her current project uses found objects from the Berlin U-Bahn. " +
+    "She works 15 hours a week as a barista at \"Kaffee Schwarz,\" a third-wave coffee shop in Kreuzberg. " +
+    "Hobbies: shooting black-and-white film on her battered Nikon F3, scouring Mauerpark flea market for vintage postcards and weird textured fabrics, " +
+    "curating hyper-specific Spotify playlists (e.g. \"Drinking espresso while it rains on a Tuesday\"), " +
+    "and going to underground techno clubs — though she usually stands in the back analyzing the lighting design rather than dancing. " +
+    "She is a massive coffee snob (she considers drip coffee a crime against humanity). " +
+    "She fiercely defends physical media — vinyl, film cameras, printed books — and hates corporate minimalist architecture. " +
+    "She misses Lyon's food and its winding traboules (hidden passageways) but finds Lyon too traditional compared to Berlin. " +
+    "Personality: warm, observant, slightly cynical but deeply passionate. Dry French humor mixed with Berlin directness. " +
+    "She is genuinely curious about new people — she asks questions because she actually wants to know. " +
+    "She sometimes slips in French filler words — \"bref\", \"enfin\", \"putain\" — when she forgets the German word.";
+
 export async function seedIfEmpty(): Promise<void> {
     const result = await db.getFirstAsync<{ count: number }>("SELECT COUNT(*) as count FROM conversations");
     if (result && result.count > 0) return;
-
-    const PENELOPE_PERSONA = [
-        "Penelope is a 20-year-old French girl who moved to Berlin six months ago to study art.",
-        "She is learning German herself — she is an A1 speaker, just like the user. She is NOT a teacher.",
-        "She lives in a small apartment in Kreuzberg with a roommate.",
-        "She loves painting, going to galleries, listening to music (especially indie and electronic), clubbing on weekends, and finding cute cafés around the city.",
-        "She has a cat named Minou that she brought from France.",
-        "Personality: she is warm, bubbly, and genuinely curious about other people. She asks follow-up questions because she actually wants to know the answer. She also loves sharing stories about her own life — her classes, her weekend plans, funny things that happened to her.",
-        "She sometimes mixes in a French word when she forgets the German one (like \"oh, comment dit-on... ich meine...\"), which makes her feel more real.",
-    ].join(" ");
 
     const seeds: Conversation[] = [
         {
@@ -273,8 +293,8 @@ export async function archiveConversation(conversationId: string): Promise<strin
 
     await db.withTransactionAsync(async () => {
         await db.runAsync(
-            `INSERT INTO archived_conversations (id, conversation_id, name, avatar_color, level, persona, question_freq, last_message, message_count, archived_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO archived_conversations (id, conversation_id, name, avatar_color, level, persona, question_freq, last_message, message_count, archived_at, quest_json)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             archiveId,
             conversationId,
             convo.name as string,
@@ -285,6 +305,7 @@ export async function archiveConversation(conversationId: string): Promise<strin
             (lastMsg?.content as string) ?? "",
             msgCount.count,
             Date.now(),
+            (convo.quest_json as string) || "",
         );
 
         await db.runAsync(
@@ -307,9 +328,8 @@ export async function archiveConversation(conversationId: string): Promise<strin
     return archiveId;
 }
 
-export async function getArchivedConversations(): Promise<ArchivedConversation[]> {
-    const rows = await db.getAllAsync("SELECT * FROM archived_conversations ORDER BY archived_at DESC");
-    return (rows as Record<string, unknown>[]).map((row) => ({
+function rowToArchivedConversation(row: Record<string, unknown>): ArchivedConversation {
+    return {
         id: row.id as string,
         conversationId: row.conversation_id as string,
         name: row.name as string,
@@ -320,7 +340,20 @@ export async function getArchivedConversations(): Promise<ArchivedConversation[]
         lastMessage: row.last_message as string,
         messageCount: row.message_count as number,
         archivedAt: row.archived_at as number,
-    }));
+        questJson: (row.quest_json as string) || undefined,
+    };
+}
+
+export async function getArchivedConversations(): Promise<ArchivedConversation[]> {
+    const rows = await db.getAllAsync("SELECT * FROM archived_conversations ORDER BY archived_at DESC");
+    return (rows as Record<string, unknown>[]).map(rowToArchivedConversation);
+}
+
+export async function getArchivedConversation(archiveId: string): Promise<ArchivedConversation | null> {
+    const row = await db.getFirstAsync<Record<string, unknown>>(
+        "SELECT * FROM archived_conversations WHERE id = ?", archiveId,
+    );
+    return row ? rowToArchivedConversation(row) : null;
 }
 
 export async function getArchivedMessages(archiveId: string): Promise<ChatMessage[]> {
@@ -364,6 +397,36 @@ export function formatTimestampForArchive(ts: number): string {
     return formatTimestampForList(ts);
 }
 
+// ---- Quest Storage ----
+
+export async function saveQuestForConversation(conversationId: string, quest: Quest): Promise<void> {
+    await db.runAsync(
+        "UPDATE conversations SET quest_json = ? WHERE id = ?",
+        JSON.stringify(quest),
+        conversationId,
+    );
+}
+
+export async function getQuestForConversation(conversationId: string): Promise<Quest | null> {
+    const row = await db.getFirstAsync<{ quest_json: string }>(
+        "SELECT quest_json FROM conversations WHERE id = ?",
+        conversationId,
+    );
+    if (!row?.quest_json) return null;
+    try {
+        return JSON.parse(row.quest_json) as Quest;
+    } catch {
+        return null;
+    }
+}
+
+export async function clearQuestForConversation(conversationId: string): Promise<void> {
+    await db.runAsync(
+        "UPDATE conversations SET quest_json = '' WHERE id = ?",
+        conversationId,
+    );
+}
+
 // ---- Dictionary Cache ----
 
 export type DictEntry = {
@@ -374,26 +437,35 @@ export type DictEntry = {
     example: string | null;
 };
 
-export async function searchDictCache(query: string): Promise<DictEntry[]> {
+// direction: "de" = German→English, "en" = English→German
+// Cache keys for EN→DE entries are prefixed with "en:" to share the same table
+function dictKey(word: string, direction: "de" | "en"): string {
+    return direction === "en" ? `en:${word}` : word;
+}
+
+export async function searchDictCache(query: string, direction: "de" | "en" = "de"): Promise<DictEntry[]> {
+    const key = dictKey(query, direction);
+    const prefix = direction === "en" ? "en:" : "";
     const rows = await db.getAllAsync(
-        "SELECT * FROM dictionary_cache WHERE word LIKE ? ORDER BY word ASC LIMIT 20",
-        `${query}%`,
+        "SELECT * FROM dictionary_cache WHERE word LIKE ? AND word LIKE ? ORDER BY word ASC LIMIT 20",
+        `${key}%`,
+        `${prefix}%`,
     );
-    return (rows as Record<string, unknown>[]).map(rowToDictEntry);
+    return (rows as Record<string, unknown>[]).map((r) => rowToDictEntry(r, direction));
 }
 
-export async function getDictEntry(word: string): Promise<DictEntry | null> {
+export async function getDictEntry(word: string, direction: "de" | "en" = "de"): Promise<DictEntry | null> {
     const row = await db.getFirstAsync<Record<string, unknown>>(
-        "SELECT * FROM dictionary_cache WHERE word = ?", word,
+        "SELECT * FROM dictionary_cache WHERE word = ?", dictKey(word, direction),
     );
-    return row ? rowToDictEntry(row) : null;
+    return row ? rowToDictEntry(row, direction) : null;
 }
 
-export async function saveDictEntry(entry: DictEntry): Promise<void> {
+export async function saveDictEntry(entry: DictEntry, direction: "de" | "en" = "de"): Promise<void> {
     await db.runAsync(
         `INSERT OR REPLACE INTO dictionary_cache (word, translations, part_of_speech, gender, example)
          VALUES (?, ?, ?, ?, ?)`,
-        entry.word,
+        dictKey(entry.word, direction),
         entry.translations,
         entry.partOfSpeech,
         entry.gender,
@@ -401,9 +473,10 @@ export async function saveDictEntry(entry: DictEntry): Promise<void> {
     );
 }
 
-function rowToDictEntry(row: Record<string, unknown>): DictEntry {
+function rowToDictEntry(row: Record<string, unknown>, direction: "de" | "en" = "de"): DictEntry {
+    const rawWord = row.word as string;
     return {
-        word: row.word as string,
+        word: direction === "en" ? rawWord.replace(/^en:/, "") : rawWord,
         translations: row.translations as string,
         partOfSpeech: (row.part_of_speech as string) || null,
         gender: (row.gender as string) || null,
@@ -443,7 +516,11 @@ export async function getAllDictEntries(): Promise<DictEntry[]> {
     const rows = await db.getAllAsync(
         "SELECT * FROM dictionary_cache ORDER BY word ASC",
     );
-    return (rows as Record<string, unknown>[]).map(rowToDictEntry);
+    return (rows as Record<string, unknown>[]).map((r) => {
+        const word = r.word as string;
+        const direction = word.startsWith("en:") ? "en" : "de";
+        return rowToDictEntry(r, direction);
+    });
 }
 
 export async function clearDictCache(): Promise<void> {

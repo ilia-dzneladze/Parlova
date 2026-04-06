@@ -44,15 +44,18 @@ def _looks_off_topic(text: str) -> bool:
 
 FOLLOW_UP_PROMPT = (
     "You just sent a message in a German text conversation. "
-    "Now send ONE short follow-up question about what the user was talking about. "
-    "Show genuine curiosity. The question must be about THEM, not about you.\n"
+    "Now send ONE short follow-up question. Show genuine curiosity. The question must be about THEM, not about you.\n"
     "\n"
     "Rules:\n"
     "- Write ONLY the question in German. Nothing else.\n"
     "- {level_rules}\n"
+    "- PRIORITY: If the user's name has not come up anywhere in the conversation so far, ask what their name is. "
+    "This takes priority over any other question.\n"
+    "- Otherwise, ask about whatever the user was just talking about — stay on their topic.\n"
     "\n"
-    "Example: \"Was magst du am liebsten?\"\n"
-    "Example: \"Studierst du auch?\""
+    "Example (name unknown): \"Wie heißt du eigentlich?\"\n"
+    "Example (name known): \"Was magst du am liebsten?\"\n"
+    "Example (name known): \"Studierst du auch?\""
 )
 
 CONCLUSION_CHECK_PROMPT = (
@@ -80,6 +83,11 @@ GOODBYE_PROMPT = (
 
 _WRAP_UP_MIN = 10   # earliest we start checking
 _WRAP_UP_FORCE = 20  # always wrap up at this count
+
+_GOODBYE_PATTERNS = re.compile(
+    r"(?i)\b(tschüss|tschuss|auf wiedersehen|bis bald|bis später|bis dann|"
+    r"bis morgen|bis nächste|ciao|mach.s gut|viel spaß|viel spass|schönen tag)\b"
+)
 
 
 def _should_check_conclusion(message_count: int) -> bool:
@@ -122,14 +130,14 @@ def _generate_goodbye(chat_messages: list[dict], persona: Persona, model: str) -
     return result.choices[0].message.content or ""
 
 
-def send_message(question, history=[], persona: Persona | None = None, message_count: int = 0):
+def send_message(question, history=[], persona: Persona | None = None, message_count: int = 0, quest=None):
     if persona is None:
         persona = Persona(
             name="Penelope",
             persona="Penelope is a 20-year-old French girl living in Berlin. She studies art, loves music, cafés, and is curious about everyone she meets.",
             question_freq=0.7,
         )
-    agent = create_texter(persona)
+    agent = create_texter(persona, quest=quest)
     start = time.time()
 
     chat_messages = [{"role": "system", "content": agent.system_prompt}]
@@ -152,12 +160,15 @@ def send_message(question, history=[], persona: Persona | None = None, message_c
 
     # Check if it's time to wrap up
     full_messages = chat_messages + [{"role": "assistant", "content": response_text}]
-    if _should_check_conclusion(message_count):
+    user_goodbye = bool(_GOODBYE_PATTERNS.search(question))
+    early_goodbye = bool(_GOODBYE_PATTERNS.search(response_text))  # type: ignore
+    if user_goodbye or early_goodbye or _should_check_conclusion(message_count):
         force = message_count >= _WRAP_UP_FORCE
         concluded = _check_conclusion(full_messages, agent.model)
         if concluded or force:
-            goodbye = _generate_goodbye(full_messages, persona, agent.model)
-            if _looks_off_topic(goodbye):  # type: ignore
+            # Don't append a second goodbye if the response already contains one
+            goodbye = "" if early_goodbye else _generate_goodbye(full_messages, persona, agent.model)
+            if goodbye and _looks_off_topic(goodbye):  # type: ignore
                 goodbye = "Okay, ich muss jetzt los! Bis bald! 😊"
             return response_text, goodbye, True, time.time() - start
 

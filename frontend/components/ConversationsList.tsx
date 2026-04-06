@@ -132,7 +132,6 @@ const ConversationsList = () => {
                 renderItem={({ item, index }) => (
                     <ConversationRow item={item} isLast={index === conversations.length - 1} />
                 )}
-                ListFooterComponent={<AddContactRow />}
                 style={styles.list}
             />
         </SafeAreaView>

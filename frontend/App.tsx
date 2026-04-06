@@ -23,6 +23,7 @@ const INACTIVE_COLOR = "#8E8E93";
 function TabNavigator() {
   return (
     <Tab.Navigator
+      initialRouteName="Conversations"
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: ACTIVE_COLOR,

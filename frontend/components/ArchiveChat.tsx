@@ -10,9 +10,12 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, useRoute, NavigationProp, RouteProp } from "@react-navigation/native";
-import { getArchivedMessages } from "../src/db/database";
+import { getArchivedMessages, getArchivedConversation } from "../src/db/database";
+import { ArchivedConversation } from "../src/types/conversation";
 import { RootStackParamList } from "../src/types/navigation";
 import { Message, SENT_COLOR, RECV_COLOR, formatTime, isLastInGroup, isFirstInGroup, showTimestamp } from "../src/utils/chat";
+import QuestBriefing from "./QuestBriefing";
+import { Quest } from "../src/types/quest";
 
 const ArchiveChat = () => {
     const navigator = useNavigation<NavigationProp<RootStackParamList>>();
@@ -20,10 +23,16 @@ const ArchiveChat = () => {
     const archiveId = route.params.archiveId;
 
     const [messages, setMessages] = useState<Message[]>([]);
+    const [archive, setArchive] = useState<ArchivedConversation | null>(null);
+    const [quest, setQuest] = useState<Quest | null>(null);
+    const [showQuest, setShowQuest] = useState(false);
 
     useEffect(() => {
         (async () => {
-            const saved = await getArchivedMessages(archiveId);
+            const [saved, meta] = await Promise.all([
+                getArchivedMessages(archiveId),
+                getArchivedConversation(archiveId),
+            ]);
             setMessages(saved.map((m) => ({
                 id: m.id,
                 sender: m.sender,
@@ -31,6 +40,10 @@ const ArchiveChat = () => {
                 responseTime: m.responseTime,
                 timestamp: m.timestamp,
             })));
+            setArchive(meta);
+            if (meta?.questJson) {
+                try { setQuest(JSON.parse(meta.questJson)); } catch { /* ignore */ }
+            }
         })();
     }, [archiveId]);
 
@@ -43,7 +56,12 @@ const ArchiveChat = () => {
                 <TouchableOpacity onPress={() => navigator.goBack()} style={styles.backButton}>
                     <Ionicons name="chevron-back" size={28} color={SENT_COLOR} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Archived</Text>
+                <Text style={styles.headerTitle}>{archive?.name ?? "Archived"}</Text>
+                {quest && (
+                    <TouchableOpacity onPress={() => setShowQuest(true)} style={styles.questBtn}>
+                        <Ionicons name="document-text-outline" size={20} color="#007AFF" />
+                    </TouchableOpacity>
+                )}
             </View>
 
             {/* Messages */}
@@ -92,6 +110,15 @@ const ArchiveChat = () => {
                 <Ionicons name="archive-outline" size={16} color="#8E8E93" />
                 <Text style={styles.footerText}>Archived conversation</Text>
             </View>
+
+            {quest && (
+                <QuestBriefing
+                    quest={quest}
+                    visible={showQuest}
+                    onDismiss={() => setShowQuest(false)}
+                    readOnly
+                />
+            )}
         </SafeAreaView>
     );
 };
@@ -123,6 +150,11 @@ const styles = StyleSheet.create({
         fontSize: 17,
         fontWeight: "600",
         color: "#000",
+    },
+    questBtn: {
+        position: "absolute",
+        right: 12,
+        padding: 4,
     },
 
     /* Message list */
