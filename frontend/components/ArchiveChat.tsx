@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, useRoute, NavigationProp, RouteProp } from "@react-navigation/native";
-import { getArchivedMessages, getArchivedConversation } from "../src/db/database";
+import { getArchivedMessages, getArchivedConversation, parseQuestJson } from "../src/db/database";
 import { ArchivedConversation } from "../src/types/conversation";
 import { RootStackParamList } from "../src/types/navigation";
 import { Message, SENT_COLOR, RECV_COLOR, formatTime, isLastInGroup, isFirstInGroup, showTimestamp } from "../src/utils/chat";
@@ -41,9 +41,7 @@ const ArchiveChat = () => {
                 timestamp: m.timestamp,
             })));
             setArchive(meta);
-            if (meta?.questJson) {
-                try { setQuest(JSON.parse(meta.questJson)); } catch { /* ignore */ }
-            }
+            setQuest(parseQuestJson(meta?.questJson));
         })();
     }, [archiveId]);
 

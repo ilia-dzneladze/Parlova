@@ -46,21 +46,6 @@ const ConversationRow = ({ item, isLast }: { item: Conversation; isLast: boolean
     );
 };
 
-const AddContactRow = () => (
-    <TouchableOpacity
-        style={styles.row}
-        activeOpacity={0.6}
-        onPress={() => {}} // TODO: implement add contact
-    >
-        <View style={styles.unreadCol} />
-        <View style={[styles.avatar, { backgroundColor: "#E5E5EA" }]}>
-            <Ionicons name="add" size={28} color="#8E8E93" />
-        </View>
-        <View style={styles.textCol}>
-            <Text style={styles.name}>Add Contact</Text>
-        </View>
-    </TouchableOpacity>
-);
 
 const ConversationsList = () => {
     const navigation = useNavigation<NavigationProp<RootStackParamList>>();

@@ -407,17 +407,17 @@ export async function saveQuestForConversation(conversationId: string, quest: Qu
     );
 }
 
+export function parseQuestJson(json: string | undefined | null): Quest | null {
+    if (!json) return null;
+    try { return JSON.parse(json) as Quest; } catch { return null; }
+}
+
 export async function getQuestForConversation(conversationId: string): Promise<Quest | null> {
     const row = await db.getFirstAsync<{ quest_json: string }>(
         "SELECT quest_json FROM conversations WHERE id = ?",
         conversationId,
     );
-    if (!row?.quest_json) return null;
-    try {
-        return JSON.parse(row.quest_json) as Quest;
-    } catch {
-        return null;
-    }
+    return parseQuestJson(row?.quest_json);
 }
 
 export async function clearQuestForConversation(conversationId: string): Promise<void> {
@@ -444,12 +444,9 @@ function dictKey(word: string, direction: "de" | "en"): string {
 }
 
 export async function searchDictCache(query: string, direction: "de" | "en" = "de"): Promise<DictEntry[]> {
-    const key = dictKey(query, direction);
-    const prefix = direction === "en" ? "en:" : "";
     const rows = await db.getAllAsync(
-        "SELECT * FROM dictionary_cache WHERE word LIKE ? AND word LIKE ? ORDER BY word ASC LIMIT 20",
-        `${key}%`,
-        `${prefix}%`,
+        "SELECT * FROM dictionary_cache WHERE word LIKE ? ORDER BY word ASC LIMIT 20",
+        `${dictKey(query, direction)}%`,
     );
     return (rows as Record<string, unknown>[]).map((r) => rowToDictEntry(r, direction));
 }
