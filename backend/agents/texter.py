@@ -42,22 +42,6 @@ def _looks_off_topic(text: str) -> bool:
     english_ratio = sum(1 for w in words if w in english_words) / len(words)
     return english_ratio > 0.4
 
-FOLLOW_UP_PROMPT = (
-    "You just sent a message in a German text conversation. "
-    "Now send ONE short follow-up question. Show genuine curiosity. The question must be about THEM, not about you.\n"
-    "\n"
-    "Rules:\n"
-    "- Write ONLY the question in German. Nothing else.\n"
-    "- {level_rules}\n"
-    "- PRIORITY: If the user's name has not come up anywhere in the conversation so far, ask what their name is. "
-    "This takes priority over any other question.\n"
-    "- Otherwise, ask about whatever the user was just talking about — stay on their topic.\n"
-    "\n"
-    "Example (name unknown): \"Wie heißt du eigentlich?\"\n"
-    "Example (name known): \"Was magst du am liebsten?\"\n"
-    "Example (name known): \"Studierst du auch?\""
-)
-
 CONCLUSION_CHECK_PROMPT = (
     "You are reviewing a German text conversation between two friends. "
     "Has the conversation reached a natural stopping point? "
@@ -146,7 +130,17 @@ def send_message(question, history=[], persona: Persona | None = None, message_c
         chat_messages.append({"role": role, "content": msg["content"]})
     chat_messages.append({"role": "user", "content": question})
 
-    # First call: response to the user
+    # Trim history if it exceeds max_context (word-count approximation)
+    if agent.max_context > 0:
+        system_msg = chat_messages[0]
+        conversation = chat_messages[1:]
+        min_keep = min(8, len(conversation))  # latest 4 turns = 8 messages
+        while (len(conversation) > min_keep and
+               sum(len(m["content"].split()) for m in [system_msg] + conversation) > agent.max_context):
+            conversation.pop(0)
+        chat_messages = [system_msg] + conversation
+
+    # Main reply
     response = groq_client.chat.completions.create(
         model=agent.model,
         messages=chat_messages, # type: ignore
@@ -172,26 +166,4 @@ def send_message(question, history=[], persona: Persona | None = None, message_c
                 goodbye = "Okay, ich muss jetzt los! Bis bald! 😊"
             return response_text, goodbye, True, time.time() - start
 
-    # Roll the dice — not every persona asks a follow-up every time
-    if random.random() >= persona.question_freq:
-        return response_text, "", False, time.time() - start
-
-    # Follow-up question about the user
-    level_rules = LEVEL_RULES.get(persona.level, LEVEL_RULES[Level.A1])
-    follow_up_system = FOLLOW_UP_PROMPT.format(level_rules=level_rules)
-
-    follow_up_messages = full_messages + [
-        {"role": "system", "content": follow_up_system},
-    ]
-
-    follow_up = groq_client.chat.completions.create(
-        model=agent.model,
-        messages=follow_up_messages, # type: ignore
-        max_tokens=60
-    )
-    follow_up_text = follow_up.choices[0].message.content
-
-    if _looks_off_topic(follow_up_text): # type: ignore
-        follow_up_text = ""
-
-    return response_text, follow_up_text, False, time.time() - start
+    return response_text, "", False, time.time() - start

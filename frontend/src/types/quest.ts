@@ -19,6 +19,7 @@ export interface Quest {
     end_goal: string;
     persona_facts: PersonaFact[];
     debrief: DebriefQuestion[];
+    debrief_result?: EvaluationResult;
 }
 
 export interface DebriefResult {

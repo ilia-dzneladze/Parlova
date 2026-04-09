@@ -15,6 +15,7 @@ interface Props {
     quest: Quest;
     visible: boolean;
     onComplete: (result: EvaluationResult) => void;
+    savedResult?: EvaluationResult;
 }
 
 const STAR_COLORS = ["#FF3B30", "#FF9500", "#FFCC00", "#34C759"];
@@ -34,11 +35,13 @@ function levenshtein(a: string, b: string): number {
     return dp[m][n];
 }
 
-const QuestDebrief = ({ quest, visible, onComplete }: Props) => {
+const QuestDebrief = ({ quest, visible, onComplete, savedResult }: Props) => {
     const [answers, setAnswers] = useState<string[]>(
-        quest.debrief.map(() => "")
+        savedResult
+            ? savedResult.results.map((r) => r.user_answer)
+            : quest.debrief.map(() => "")
     );
-    const [result, setResult] = useState<EvaluationResult | null>(null);
+    const [result, setResult] = useState<EvaluationResult | null>(savedResult ?? null);
 
     const allAnswered = answers.every((a) => a.trim().length > 0);
 

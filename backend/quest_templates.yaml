@@ -12,7 +12,7 @@
 # ──────────────────────────────────────────
 slots:
   lieblingsessen:
-    - Crêpes
+    - Crepes
     - Ramen
     - Falafel
     - Sushi
@@ -22,7 +22,7 @@ slots:
     - Hummus
     - Waffeln
     - Quiche
-    - Tarte Flambée
+    - Tarte Flambee
     - Gyros
     - Bibimbap
     - Pho
@@ -52,7 +52,7 @@ slots:
     - Modeselektor
     - Max Richter
     - Floating Points
-    - Trentemøller
+    - Trentemoller
     - Jon Hopkins
 
   lieblingsfilm:
@@ -111,15 +111,15 @@ slots:
 
   treffpunkt:
     - Kaffee Schwarz
-    - Café Morgenrot
-    - Café Jule
-    - Café August
-    - Café Pförtner
-    - Café Matilda
-    - Café Wohnzimmer
-    - Café Oliv
-    - Café Achteck
-    - Café Bravo
+    - Cafe Morgenrot
+    - Cafe Jule
+    - Cafe August
+    - Cafe Pförtner
+    - Cafe Matilda
+    - Cafe Wohnzimmer
+    - Cafe Oliv
+    - Cafe Achteck
+    - Cafe Bravo
 
   projekt_material:
     - U-Bahn-Tickets
@@ -136,7 +136,7 @@ slots:
 # ──────────────────────────────────────────
 A1:
   - id: a1_cafe_plan
-    topic: Planning a café meetup
+    topic: Planning a cafe meetup
     persona_facts:
       - key: wohnt_in
         label: "Which neighborhood {name} lives in"

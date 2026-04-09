@@ -438,8 +438,8 @@ const Chat = () => {
                         });
                     }
                     if (data.wrap_up) {
-                        await clearQuestForConversation(conversationId);
                         await archiveConversation(conversationId);
+                        await clearQuestForConversation(conversationId);
                     } else {
                         await markAsUnread(conversationId);
                     }
@@ -454,7 +454,7 @@ const Chat = () => {
         doFetch();
     };
 
-    const handleDebriefComplete = async (_result: EvaluationResult) => {
+    const handleDebriefComplete = async (result: EvaluationResult) => {
         setShowDebrief(false);
         const msgs: ChatMessage[] = messagesRef.current.map((m) => ({
             id: m.id,
@@ -465,8 +465,13 @@ const Chat = () => {
             timestamp: m.timestamp,
         }));
         await saveMessages(conversationId, msgs);
-        await clearQuestForConversation(conversationId);
+        // Save debrief result into quest before archiving
+        if (questRef.current) {
+            const questWithResult = { ...questRef.current, debrief_result: result };
+            await saveQuestForConversation(conversationId, questWithResult);
+        }
         await archiveConversation(conversationId);
+        await clearQuestForConversation(conversationId);
         setQuest(null);
         questRef.current = null;
         setMessages([{

@@ -4,11 +4,11 @@
       "splitTerminals": [
         {
           "name": "Backend",
-          "commands": ["./start_backend.sh"]
+          "commands": ["sleep 2 && ./start_backend.sh"]
         },
         {
           "name": "Frontend",
-          "commands": ["cd frontend && npx expo start --tunnel"]
+          "commands": ["sleep 2 && cd frontend && npx expo start --tunnel"]
         }
       ]
     },
@@ -16,7 +16,7 @@
       "splitTerminals": [
         {
           "name": "Claude",
-          "commands": ["claude"]
+          "commands": ["sleep 2 && claude"]
         }
       ]
     },

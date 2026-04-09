@@ -15,6 +15,7 @@ import { ArchivedConversation } from "../src/types/conversation";
 import { RootStackParamList } from "../src/types/navigation";
 import { Message, SENT_COLOR, RECV_COLOR, formatTime, isLastInGroup, isFirstInGroup, showTimestamp } from "../src/utils/chat";
 import QuestBriefing from "./QuestBriefing";
+import QuestDebrief from "./QuestDebrief";
 import { Quest } from "../src/types/quest";
 
 const ArchiveChat = () => {
@@ -26,6 +27,7 @@ const ArchiveChat = () => {
     const [archive, setArchive] = useState<ArchivedConversation | null>(null);
     const [quest, setQuest] = useState<Quest | null>(null);
     const [showQuest, setShowQuest] = useState(false);
+    const [showDebrief, setShowDebrief] = useState(false);
 
     useEffect(() => {
         (async () => {
@@ -56,9 +58,14 @@ const ArchiveChat = () => {
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>{archive?.name ?? "Archived"}</Text>
                 {quest && (
-                    <TouchableOpacity onPress={() => setShowQuest(true)} style={styles.questBtn}>
-                        <Ionicons name="document-text-outline" size={20} color="#007AFF" />
-                    </TouchableOpacity>
+                    <View style={styles.headerActions}>
+                        <TouchableOpacity onPress={() => setShowDebrief(true)}>
+                            <Ionicons name="shield-checkmark-outline" size={20} color="#007AFF" />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => setShowQuest(true)}>
+                            <Ionicons name="document-text-outline" size={20} color="#007AFF" />
+                        </TouchableOpacity>
+                    </View>
                 )}
             </View>
 
@@ -117,6 +124,14 @@ const ArchiveChat = () => {
                     readOnly
                 />
             )}
+            {quest && (
+                <QuestDebrief
+                    quest={quest}
+                    visible={showDebrief}
+                    onComplete={() => setShowDebrief(false)}
+                    savedResult={quest.debrief_result}
+                />
+            )}
         </SafeAreaView>
     );
 };
@@ -149,10 +164,12 @@ const styles = StyleSheet.create({
         fontWeight: "600",
         color: "#000",
     },
-    questBtn: {
+    headerActions: {
         position: "absolute",
         right: 12,
-        padding: 4,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 16,
     },
 
     /* Message list */
