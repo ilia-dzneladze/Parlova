@@ -40,7 +40,7 @@ export const COLORS = {
 
     // Chat bubble colors (map brand palette → iMessage-style bubbles)
     bubbleSent:   "#dd4455", // Strawberry (user messages)
-    bubbleRecv:   "#fbeaf0", // Cream (AI messages)
+    bubbleRecv:   "#ede0f7", // Lavender (AI messages)
     bubbleTextSent: "#ffffff",
     bubbleTextRecv: "#171717",
 } as const;

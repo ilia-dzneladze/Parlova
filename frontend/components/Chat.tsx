@@ -23,14 +23,14 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, useRoute, NavigationProp, RouteProp } from "@react-navigation/native";
 import uuid from "react-native-uuid";
-import { getMessages, saveMessages, appendMessage, archiveConversation, markAsRead, markAsUnread, getConversation, saveQuestForConversation, getQuestForConversation, clearQuestForConversation, ChatMessage, getDictionaryUsage, incrementDictionaryUsage, searchDictCache, getDictEntry, saveDictEntry, DictEntry } from "../src/db/database";
+import { getMessages, saveMessages, appendMessage, archiveConversation, markAsRead, markAsUnread, getConversation, saveQuestForConversation, getQuestForConversation, clearQuestForConversation, ChatMessage, getDictionaryUsage, incrementDictionaryUsage, searchDictCache, saveDictEntry, DictEntry } from "../src/db/database";
 import { Conversation } from "../src/types/conversation";
 import { RootStackParamList } from "../src/types/navigation";
 import { Quest, EvaluationResult } from "../src/types/quest";
 import { Message, SENT_COLOR, RECV_COLOR, DEFAULT_GREETING, formatTime, isLastInGroup, isFirstInGroup, showTimestamp } from "../src/utils/chat";
 import QuestBriefing from "./QuestBriefing";
 import QuestDebrief from "./QuestDebrief";
-import { COLORS, FONTS, RADIUS, SIZES } from "../constants/theme";
+import { COLORS, FONTS } from "../constants/theme";
 
 const API_BASE = 'https://overabusive-nonchimerically-marvella.ngrok-free.dev';
 
@@ -161,8 +161,22 @@ const Chat = () => {
                     partOfSpeech: data.partOfSpeech,
                     gender: data.gender,
                     example: data.example,
+                    headline: data.headline ?? null,
+                    root: data.root ? JSON.stringify(data.root) : null,
                 };
                 await saveDictEntry(entry, dictDirection);
+                // Save root form as its own independently-searchable cache entry (no usage charge)
+                if (data.root) {
+                    await saveDictEntry({
+                        word: data.root.word,
+                        translations: JSON.stringify(data.root.translations),
+                        partOfSpeech: data.root.partOfSpeech,
+                        gender: data.root.gender,
+                        example: data.root.example,
+                        headline: data.root.headline ?? null,
+                        root: null,
+                    }, "de");
+                }
                 setDictSelected(entry);
                 setDictNotFound(false);
                 const results = await searchDictCache(trimmed, dictDirection);
@@ -178,7 +192,7 @@ const Chat = () => {
     }, [dictWord, dictCount, dictDirection]);
 
     const SCREEN_HEIGHT = Dimensions.get("window").height;
-    const SHEET_HEIGHT = SCREEN_HEIGHT * 0.55;
+    const SHEET_HEIGHT = SCREEN_HEIGHT * 0.5;
     const sheetAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
 
     const openDictionary = useCallback((prefill?: string) => {
@@ -679,8 +693,7 @@ const Chat = () => {
                             styles.modalSheet,
                             {
                                 transform: [{ translateY: sheetAnim }],
-                                maxHeight: SCREEN_HEIGHT * 0.55,
-                                paddingBottom: 40,
+                                height: SHEET_HEIGHT,
                             },
                         ]}>
                          {/* Drag handle */}
@@ -688,7 +701,12 @@ const Chat = () => {
                             <View style={styles.modalHandle} />
                          </View>
 
-                         <ScrollView keyboardShouldPersistTaps="handled" bounces={false}>
+                         <ScrollView
+                             keyboardShouldPersistTaps="handled"
+                             bounces={false}
+                             style={{ flex: 1 }}
+                             contentContainerStyle={{ paddingBottom: 40 }}
+                         >
                             <View style={styles.modalHeader}>
                                 <Text style={styles.modalTitle}>Dictionary</Text>
                                 <TouchableOpacity onPress={closeDictionary}>
@@ -758,10 +776,18 @@ const Chat = () => {
                             {/* Selected word result */}
                             {dictSelected && (() => {
                                 const translations: string[] = JSON.parse(dictSelected.translations);
+                                const root = dictSelected.root ? JSON.parse(dictSelected.root) : null;
+                                const rootTranslations: string[] | null = root ? (root.translations as string[]) : null;
                                 return (
+                                    <>
                                     <View style={styles.dictResultCard}>
                                         <View style={styles.dictResultHeader}>
-                                            <Text style={styles.dictResultWord}>{dictSelected.word}</Text>
+                                            <View style={styles.dictResultWordRow}>
+                                                <Text style={styles.dictResultWord}>{dictSelected.word}</Text>
+                                                {dictSelected.headline && (
+                                                    <Text style={styles.dictResultHeadline}> — {dictSelected.headline}</Text>
+                                                )}
+                                            </View>
                                             {(dictSelected.partOfSpeech || dictSelected.gender) && (
                                                 <Text style={styles.dictResultMeta}>
                                                     {[dictSelected.partOfSpeech, dictSelected.gender].filter(Boolean).join(" · ")}
@@ -783,6 +809,39 @@ const Chat = () => {
                                             </View>
                                         )}
                                     </View>
+                                    {root && rootTranslations && (
+                                        <View style={[styles.dictResultCard, styles.dictRootCard]}>
+                                            <View style={styles.dictResultHeader}>
+                                                <Text style={styles.dictRootLabel}>Root form</Text>
+                                                <View style={styles.dictResultWordRow}>
+                                                    <Text style={styles.dictResultWord}>{root.word}</Text>
+                                                    {root.headline && (
+                                                        <Text style={styles.dictResultHeadline}> — {root.headline}</Text>
+                                                    )}
+                                                </View>
+                                                {(root.partOfSpeech || root.gender) && (
+                                                    <Text style={styles.dictResultMeta}>
+                                                        {[root.partOfSpeech, root.gender].filter(Boolean).join(" · ")}
+                                                    </Text>
+                                                )}
+                                            </View>
+                                            <View style={styles.dictTranslations}>
+                                                {rootTranslations.slice(0, 3).map((t: string, i: number) => (
+                                                    <View key={i} style={styles.dictTransRow}>
+                                                        <Text style={styles.dictBullet}>•</Text>
+                                                        <Text style={styles.dictTransText}>{t}</Text>
+                                                    </View>
+                                                ))}
+                                            </View>
+                                            {root.example && (
+                                                <View style={styles.dictExampleBox}>
+                                                    <Text style={styles.dictExampleLabel}>Example</Text>
+                                                    <Text style={styles.dictExampleText}>{root.example}</Text>
+                                                </View>
+                                            )}
+                                        </View>
+                                    )}
+                                    </>
                                 );
                             })()}
 
@@ -851,7 +910,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         justifyContent: "center",
         borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: COLORS.border,
+        borderBottomColor: COLORS.borderInput,
         backgroundColor: COLORS.bg,
     },
     backButton: {
@@ -970,7 +1029,7 @@ const styles = StyleSheet.create({
         paddingVertical: 6,
         backgroundColor: COLORS.bg,
         borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: COLORS.border,
+        borderTopColor: COLORS.borderInput,
     },
     inputPill: {
         flex: 1,
@@ -1166,16 +1225,39 @@ const styles = StyleSheet.create({
     dictResultHeader: {
         marginBottom: 10,
     },
+    dictResultWordRow: {
+        flexDirection: "row",
+        alignItems: "baseline",
+        flexWrap: "wrap",
+    },
     dictResultWord: {
         fontFamily: FONTS.displayBold,
         fontSize: 22,
         color: COLORS.ink,
         letterSpacing: -0.3,
     },
+    dictResultHeadline: {
+        fontFamily: FONTS.displaySemi,
+        fontSize: 18,
+        color: COLORS.primary,
+        letterSpacing: -0.2,
+    },
     dictResultMeta: {
         fontSize: 14,
         color: COLORS.inkMuted,
         marginTop: 2,
+    },
+    dictRootCard: {
+        marginTop: 10,
+        backgroundColor: COLORS.bg,
+    },
+    dictRootLabel: {
+        fontFamily: FONTS.sansMedium,
+        fontSize: 11,
+        color: COLORS.inkMuted,
+        textTransform: "uppercase",
+        letterSpacing: 0.5,
+        marginBottom: 2,
     },
     dictTranslations: {
         marginBottom: 10,

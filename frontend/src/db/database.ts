@@ -109,6 +109,10 @@ export async function initDB(): Promise<void> {
     // Persist quest in archives so past missions are reviewable
     await addColumnSafe("archived_conversations", "quest_json", "");
 
+    // Dictionary cache: headline (direct translation) and root_entry (lemma lookup)
+    await addColumnSafe("dictionary_cache", "headline", "");
+    await addColumnSafe("dictionary_cache", "root_entry", "");
+
     // Persona migration: always keep Penelope's persona up to date with the latest version
     await db.runAsync(
         "UPDATE conversations SET persona = ?, question_freq = 0.7 WHERE name = 'Penelope'",
@@ -435,6 +439,8 @@ export type DictEntry = {
     partOfSpeech: string | null;
     gender: string | null;
     example: string | null;
+    headline: string | null;
+    root: string | null;  // JSON-serialised root DictEntry, or null
 };
 
 // direction: "de" = German→English, "en" = English→German
@@ -460,13 +466,15 @@ export async function getDictEntry(word: string, direction: "de" | "en" = "de"):
 
 export async function saveDictEntry(entry: DictEntry, direction: "de" | "en" = "de"): Promise<void> {
     await db.runAsync(
-        `INSERT OR REPLACE INTO dictionary_cache (word, translations, part_of_speech, gender, example)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT OR REPLACE INTO dictionary_cache (word, translations, part_of_speech, gender, example, headline, root_entry)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
         dictKey(entry.word, direction),
         entry.translations,
         entry.partOfSpeech,
         entry.gender,
         entry.example,
+        entry.headline,
+        entry.root,
     );
 }
 
@@ -478,6 +486,8 @@ function rowToDictEntry(row: Record<string, unknown>, direction: "de" | "en" = "
         partOfSpeech: (row.part_of_speech as string) || null,
         gender: (row.gender as string) || null,
         example: (row.example as string) || null,
+        headline: (row.headline as string) || null,
+        root: (row.root_entry as string) || null,
     };
 }
 
