@@ -1,7 +1,10 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+    Alert,
+    Animated,
     ActivityIndicator,
     FlatList,
+    PanResponder,
     StatusBar,
     StyleSheet,
     Text,
@@ -12,40 +15,131 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useFocusEffect, NavigationProp } from "@react-navigation/native";
 import { Conversation } from "../src/types/conversation";
-import { initDB, seedIfEmpty, getConversations, upsertPersona } from "../src/db/database";
+import { initDB, seedIfEmpty, getConversations, upsertPersona, archiveConversation, deleteConversation } from "../src/db/database";
 import { Persona } from "../src/types/persona";
 import { API_BASE, PERSONAS_API_KEY } from "../constants/api";
 import { RootStackParamList } from "../src/types/navigation";
 import { COLORS, FONTS, RADIUS, SIZES, SPACING } from "../constants/theme";
 
-const ConversationRow = ({ item, isLast }: { item: Conversation; isLast: boolean }) => {
+const ACTION_WIDTH = 75;   // width of each action button
+const REVEAL = ACTION_WIDTH * 2;  // total swipe reveal (Archive + Delete)
+const SWIPE_THRESHOLD = 50;
+
+type RowAction = (id: string) => void;
+
+const ConversationRow = ({
+    item,
+    isLast,
+    onArchive,
+    onDelete,
+}: {
+    item: Conversation;
+    isLast: boolean;
+    onArchive: RowAction;
+    onDelete: RowAction;
+}) => {
     const navigation = useNavigation<NavigationProp<RootStackParamList>>();
+    const translateX = useRef(new Animated.Value(0)).current;
+    const isOpenRef = useRef(false);
+
+    const snapClose = useCallback(() => {
+        Animated.spring(translateX, {
+            toValue: 0, useNativeDriver: true, damping: 20, stiffness: 250,
+        }).start();
+        isOpenRef.current = false;
+    }, [translateX]);
+
+    const snapOpen = useCallback(() => {
+        Animated.spring(translateX, {
+            toValue: -REVEAL, useNativeDriver: true, damping: 20, stiffness: 250,
+        }).start();
+        isOpenRef.current = true;
+    }, [translateX]);
+
+    const panResponder = useRef(
+        PanResponder.create({
+            onMoveShouldSetPanResponder: (_, g) =>
+                Math.abs(g.dx) > 6 && Math.abs(g.dx) > Math.abs(g.dy),
+            onPanResponderGrant: () => {
+                translateX.stopAnimation();
+            },
+            onPanResponderMove: (_, g) => {
+                const base = isOpenRef.current ? -REVEAL : 0;
+                const next = Math.max(-REVEAL, Math.min(0, base + g.dx));
+                translateX.setValue(next);
+            },
+            onPanResponderRelease: (_, g) => {
+                if (isOpenRef.current) {
+                    g.dx > SWIPE_THRESHOLD ? snapClose() : snapOpen();
+                } else {
+                    g.dx < -SWIPE_THRESHOLD ? snapOpen() : snapClose();
+                }
+            },
+        })
+    ).current;
 
     return (
-        <TouchableOpacity
-            style={styles.row}
-            activeOpacity={0.6}
-            onPress={() => navigation.navigate("Chat", { conversationId: item.id, conversationName: item.name })}
-        >
-            {/* Unread dot */}
-            <View style={styles.unreadCol}>
-                {item.unread && <View style={styles.unreadDot} />}
+        <View style={styles.rowContainer}>
+            {/* Action buttons revealed by swipe */}
+            <View style={styles.actions}>
+                <TouchableOpacity
+                    style={styles.actionArchive}
+                    onPress={() => { snapClose(); onArchive(item.id); }}
+                    activeOpacity={0.8}
+                >
+                    <Ionicons name="archive-outline" size={20} color={COLORS.white} />
+                    <Text style={styles.actionLabel}>Archive</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={styles.actionDelete}
+                    onPress={() => { snapClose(); onDelete(item.id); }}
+                    activeOpacity={0.8}
+                >
+                    <Ionicons name="trash-outline" size={20} color={COLORS.white} />
+                    <Text style={styles.actionLabel}>Delete</Text>
+                </TouchableOpacity>
             </View>
 
-            {/* Avatar */}
-            <View style={[styles.avatar, { backgroundColor: item.avatarColor }]}>
-                <Text style={styles.avatarText}>{item.name[0]}</Text>
-            </View>
+            {/* Sliding row content */}
+            <Animated.View
+                style={[styles.rowSlide, { transform: [{ translateX }] }]}
+                {...panResponder.panHandlers}
+            >
+                <TouchableOpacity
+                    style={styles.row}
+                    activeOpacity={0.6}
+                    onPress={() => {
+                        if (isOpenRef.current) {
+                            snapClose();
+                        } else {
+                            navigation.navigate("Chat", {
+                                conversationId: item.id,
+                                conversationName: item.name,
+                            });
+                        }
+                    }}
+                >
+                    {/* Unread dot */}
+                    <View style={styles.unreadCol}>
+                        {item.unread && <View style={styles.unreadDot} />}
+                    </View>
 
-            {/* Text content */}
-            <View style={[styles.textCol, !isLast && styles.separator]}>
-                <View style={styles.topRow}>
-                    <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
-                    <Text style={styles.time}>{item.timestamp}</Text>
-                </View>
-                <Text style={styles.preview} numberOfLines={1}>{item.lastMessage}</Text>
-            </View>
-        </TouchableOpacity>
+                    {/* Avatar */}
+                    <View style={[styles.avatar, { backgroundColor: item.avatarColor }]}>
+                        <Text style={styles.avatarText}>{item.name[0]}</Text>
+                    </View>
+
+                    {/* Text content */}
+                    <View style={[styles.textCol, !isLast && styles.separator]}>
+                        <View style={styles.topRow}>
+                            <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
+                            <Text style={styles.time}>{item.timestamp}</Text>
+                        </View>
+                        <Text style={styles.preview} numberOfLines={1}>{item.lastMessage}</Text>
+                    </View>
+                </TouchableOpacity>
+            </Animated.View>
+        </View>
     );
 };
 
@@ -68,6 +162,10 @@ const ConversationsList = () => {
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [loading, setLoading] = useState(true);
 
+    const refresh = useCallback(() => {
+        getConversations().then(setConversations);
+    }, []);
+
     useEffect(() => {
         (async () => {
             await initDB();
@@ -75,19 +173,39 @@ const ConversationsList = () => {
             const data = await getConversations();
             setConversations(data);
             setLoading(false);
-            // Sync global personas from backend in the background
             syncGlobalPersonas();
         })();
     }, []);
 
-    // Refresh conversations when screen regains focus (e.g. returning from Chat)
     useFocusEffect(
         useCallback(() => {
-            if (!loading) {
-                getConversations().then(setConversations);
-            }
-        }, [loading])
+            if (!loading) refresh();
+        }, [loading, refresh])
     );
+
+    const handleArchive = useCallback(async (id: string) => {
+        await archiveConversation(id);
+        await deleteConversation(id);
+        refresh();
+    }, [refresh]);
+
+    const handleDelete = useCallback((id: string) => {
+        Alert.alert(
+            "Delete Conversation",
+            "This will permanently delete the conversation and all its messages.",
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: async () => {
+                        await deleteConversation(id);
+                        refresh();
+                    },
+                },
+            ],
+        );
+    }, [refresh]);
 
     if (loading) {
         return (
@@ -111,7 +229,10 @@ const ConversationsList = () => {
                     <TouchableOpacity onPress={() => navigation.navigate("ArchiveList")}>
                         <Ionicons name="archive-outline" size={22} color={COLORS.primary} />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => {}} /* TODO: compose action */>
+                    <TouchableOpacity onPress={() => navigation.navigate("CreatePersona")}>
+                        <Ionicons name="person-add-outline" size={22} color={COLORS.primary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => navigation.navigate("NewConversation")}>
                         <Ionicons name="create-outline" size={24} color={COLORS.primary} />
                     </TouchableOpacity>
                 </View>
@@ -122,7 +243,7 @@ const ConversationsList = () => {
 
             {/* Search bar */}
             <View style={styles.searchWrap}>
-                <TouchableOpacity style={styles.searchBar} activeOpacity={1} onPress={() => {}} /* TODO: search */>
+                <TouchableOpacity style={styles.searchBar} activeOpacity={1} onPress={() => {}}>
                     <Ionicons name="search" size={16} color={COLORS.inkSubtle} />
                     <Text style={styles.searchPlaceholder}>Search</Text>
                 </TouchableOpacity>
@@ -133,19 +254,14 @@ const ConversationsList = () => {
                 data={conversations}
                 keyExtractor={(c) => c.id}
                 renderItem={({ item, index }) => (
-                    <ConversationRow item={item} isLast={index === conversations.length - 1} />
+                    <ConversationRow
+                        item={item}
+                        isLast={index === conversations.length - 1}
+                        onArchive={handleArchive}
+                        onDelete={handleDelete}
+                    />
                 )}
                 style={styles.list}
-                ListFooterComponent={
-                    <TouchableOpacity
-                        style={styles.addUserBtn}
-                        activeOpacity={0.7}
-                        onPress={() => navigation.navigate("CreatePersona")}
-                    >
-                        <Ionicons name="add-circle-outline" size={20} color={COLORS.primary} />
-                        <Text style={styles.addUserText}>Add Character</Text>
-                    </TouchableOpacity>
-                }
             />
         </SafeAreaView>
     );
@@ -154,14 +270,8 @@ const ConversationsList = () => {
 export default ConversationsList;
 
 const styles = StyleSheet.create({
-    root: {
-        flex: 1,
-        backgroundColor: COLORS.surface,
-    },
-    center: {
-        alignItems: "center",
-        justifyContent: "center",
-    },
+    root: { flex: 1, backgroundColor: COLORS.surface },
+    center: { alignItems: "center", justifyContent: "center" },
 
     /* Header */
     header: {
@@ -171,16 +281,8 @@ const styles = StyleSheet.create({
         paddingHorizontal: SPACING[4],
         height: 44,
     },
-    editBtn: {
-        fontFamily: FONTS.sansMedium,
-        fontSize: 17,
-        color: COLORS.primary,
-    },
-    headerRight: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: SPACING[4],
-    },
+    editBtn: { fontFamily: FONTS.sansMedium, fontSize: 17, color: COLORS.primary },
+    headerRight: { flexDirection: "row", alignItems: "center", gap: SPACING[4] },
 
     /* Title */
     title: {
@@ -193,10 +295,7 @@ const styles = StyleSheet.create({
     },
 
     /* Search */
-    searchWrap: {
-        paddingHorizontal: SPACING[4],
-        marginBottom: SPACING[2],
-    },
+    searchWrap: { paddingHorizontal: SPACING[4], marginBottom: SPACING[2] },
     searchBar: {
         flexDirection: "row",
         alignItems: "center",
@@ -206,29 +305,48 @@ const styles = StyleSheet.create({
         height: 36,
         gap: 6,
     },
-    searchPlaceholder: {
-        fontFamily: FONTS.sans,
-        fontSize: 16,
-        color: COLORS.inkSubtle,
+    searchPlaceholder: { fontFamily: FONTS.sans, fontSize: 16, color: COLORS.inkSubtle },
+
+    list: { flex: 1 },
+
+    /* Swipeable row container */
+    rowContainer: {
+        overflow: "hidden",
+        backgroundColor: COLORS.surface,
     },
 
-    /* List */
-    list: {
-        flex: 1,
-    },
-
-    /* Add Character button */
-    addUserBtn: {
+    /* Action buttons (behind the row) */
+    actions: {
+        position: "absolute",
+        top: 0,
+        bottom: 0,
+        right: 0,
+        width: REVEAL,
         flexDirection: "row",
-        alignItems: "center",
-        gap: SPACING[2],
-        paddingHorizontal: SPACING[4] + 20,
-        paddingVertical: SPACING[4],
     },
-    addUserText: {
+    actionArchive: {
+        width: ACTION_WIDTH,
+        backgroundColor: "#4A8FC4",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 4,
+    },
+    actionDelete: {
+        width: ACTION_WIDTH,
+        backgroundColor: COLORS.error,
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 4,
+    },
+    actionLabel: {
         fontFamily: FONTS.sansMedium,
-        fontSize: SIZES.base,
-        color: COLORS.primary,
+        fontSize: 12,
+        color: COLORS.white,
+    },
+
+    /* Sliding content */
+    rowSlide: {
+        backgroundColor: COLORS.surface,
     },
 
     /* Row */
@@ -237,68 +355,42 @@ const styles = StyleSheet.create({
         alignItems: "center",
         paddingRight: SPACING[4],
         minHeight: 76,
+        backgroundColor: COLORS.surface,
     },
 
     /* Unread dot column */
-    unreadCol: {
-        width: 20,
-        alignItems: "center",
-        justifyContent: "center",
-    },
+    unreadCol: { width: 20, alignItems: "center", justifyContent: "center" },
     unreadDot: {
-        width: 10,
-        height: 10,
-        borderRadius: 5,
-        backgroundColor: COLORS.primary,
+        width: 10, height: 10, borderRadius: 5, backgroundColor: COLORS.primary,
     },
 
     /* Avatar */
     avatar: {
-        width: 60,
-        height: 60,
-        borderRadius: 30,
-        alignItems: "center",
-        justifyContent: "center",
+        width: 60, height: 60, borderRadius: 30,
+        alignItems: "center", justifyContent: "center",
     },
     avatarText: {
-        fontFamily: FONTS.displayBold,
-        color: COLORS.white,
-        fontSize: SIZES["2xl"],
+        fontFamily: FONTS.displayBold, color: COLORS.white, fontSize: SIZES["2xl"],
     },
 
     /* Text column */
     textCol: {
-        flex: 1,
-        paddingLeft: SPACING[3],
-        paddingVertical: SPACING[2],
-        justifyContent: "center",
+        flex: 1, paddingLeft: SPACING[3], paddingVertical: SPACING[2], justifyContent: "center",
     },
     separator: {
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: COLORS.border,
+        borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border,
     },
     topRow: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "baseline",
-        marginBottom: 2,
+        flexDirection: "row", justifyContent: "space-between",
+        alignItems: "baseline", marginBottom: 2,
     },
     name: {
-        fontFamily: FONTS.sansSemi,
-        fontSize: SIZES.base,
-        color: COLORS.ink,
-        flex: 1,
+        fontFamily: FONTS.sansSemi, fontSize: SIZES.base, color: COLORS.ink, flex: 1,
     },
     time: {
-        fontFamily: FONTS.sans,
-        fontSize: SIZES.sm,
-        color: COLORS.inkSubtle,
-        marginLeft: SPACING[2],
+        fontFamily: FONTS.sans, fontSize: SIZES.sm, color: COLORS.inkSubtle, marginLeft: SPACING[2],
     },
     preview: {
-        fontFamily: FONTS.sans,
-        fontSize: SIZES.sm,
-        color: COLORS.inkMuted,
-        lineHeight: 20,
+        fontFamily: FONTS.sans, fontSize: SIZES.sm, color: COLORS.inkMuted, lineHeight: 20,
     },
 });

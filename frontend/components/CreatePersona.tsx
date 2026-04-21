@@ -14,24 +14,23 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, NavigationProp } from "@react-navigation/native";
 import uuid from "react-native-uuid";
-import { insertPersona, insertConversation } from "../src/db/database";
+import { insertPersona } from "../src/db/database";
 import { Persona } from "../src/types/persona";
 import { RootStackParamList } from "../src/types/navigation";
-import { DEFAULT_GREETING } from "../src/utils/chat";
 import { COLORS, FONTS, RADIUS, SIZES, SPACING } from "../constants/theme";
 
 const AVATAR_COLORS = [
-    "#E05C6E", // rose
-    "#D4774A", // terracotta
-    "#C9A227", // amber
-    "#5BAD7F", // sage
-    "#4A8FC4", // sky
-    "#7B6FC4", // lavender
-    "#C46FA0", // mauve
-    "#6B7280", // slate
+    "#E05C6E",
+    "#D4774A",
+    "#C9A227",
+    "#5BAD7F",
+    "#4A8FC4",
+    "#7B6FC4",
+    "#C46FA0",
+    "#6B7280",
 ];
 
-const LEVELS = ["A1", "A2"] as const;
+const LEVELS = ["A1", "A2", "B1", "B2", "C1"] as const;
 
 const FREQ_OPTIONS: { label: string; sublabel: string; value: number }[] = [
     { label: "Quiet",    sublabel: "Rarely asks questions",  value: 0.3 },
@@ -44,17 +43,16 @@ export default function CreatePersona() {
 
     const [name, setName] = useState("");
     const [description, setDescription] = useState("");
-    const [level, setLevel] = useState<"A1" | "A2">("A1");
+    const [level, setLevel] = useState<typeof LEVELS[number]>("A1");
     const [avatarColor, setAvatarColor] = useState(AVATAR_COLORS[0]);
     const [questionFreq, setQuestionFreq] = useState(0.55);
 
     const canSave = name.trim().length > 0 && description.trim().length > 0;
 
-    async function handleCreate() {
+    async function handleSave() {
         if (!canSave) return;
-        const personaId = uuid.v4() as string;
         const persona: Persona = {
-            id: personaId,
+            id: uuid.v4() as string,
             name: name.trim(),
             description: description.trim(),
             level,
@@ -64,16 +62,6 @@ export default function CreatePersona() {
             globalId: null,
         };
         await insertPersona(persona);
-        await insertConversation({
-            id: uuid.v4() as string,
-            name: persona.name,
-            avatarColor: persona.avatarColor,
-            level: persona.level,
-            personaId: persona.id,
-            lastMessage: DEFAULT_GREETING,
-            timestamp: "Now",
-            unread: true,
-        });
         navigation.goBack();
     }
 
@@ -81,7 +69,6 @@ export default function CreatePersona() {
         <SafeAreaView style={styles.root}>
             <StatusBar barStyle="dark-content" backgroundColor={COLORS.surface} />
 
-            {/* Header */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={12}>
                     <Ionicons name="chevron-back" size={26} color={COLORS.ink} />
@@ -100,7 +87,6 @@ export default function CreatePersona() {
                     contentContainerStyle={styles.scrollContent}
                     keyboardShouldPersistTaps="handled"
                 >
-                    {/* Avatar preview + color picker */}
                     <View style={styles.avatarRow}>
                         <View style={[styles.avatarPreview, { backgroundColor: avatarColor }]}>
                             <Text style={styles.avatarInitial}>
@@ -123,7 +109,6 @@ export default function CreatePersona() {
                         </View>
                     </View>
 
-                    {/* Name */}
                     <Text style={styles.label}>Name</Text>
                     <TextInput
                         style={styles.input}
@@ -135,7 +120,6 @@ export default function CreatePersona() {
                         returnKeyType="next"
                     />
 
-                    {/* Description */}
                     <Text style={styles.label}>About them</Text>
                     <Text style={styles.hint}>
                         Describe who they are — age, where they live, hobbies, personality. The richer the description, the more consistent the conversation.
@@ -150,7 +134,6 @@ export default function CreatePersona() {
                         textAlignVertical="top"
                     />
 
-                    {/* Level */}
                     <Text style={styles.label}>Language Level</Text>
                     <View style={styles.segmentRow}>
                         {LEVELS.map((l) => (
@@ -167,7 +150,6 @@ export default function CreatePersona() {
                         ))}
                     </View>
 
-                    {/* Question frequency */}
                     <Text style={styles.label}>Conversation Style</Text>
                     <View style={styles.freqRow}>
                         {FREQ_OPTIONS.map((opt) => (
@@ -188,15 +170,14 @@ export default function CreatePersona() {
                     </View>
                 </ScrollView>
 
-                {/* CTA */}
                 <View style={styles.footer}>
                     <TouchableOpacity
-                        style={[styles.createBtn, !canSave && styles.createBtnDisabled]}
-                        onPress={handleCreate}
+                        style={[styles.saveBtn, !canSave && styles.saveBtnDisabled]}
+                        onPress={handleSave}
                         disabled={!canSave}
                         activeOpacity={0.85}
                     >
-                        <Text style={styles.createBtnText}>Start Chatting</Text>
+                        <Text style={styles.saveBtnText}>Save Character</Text>
                     </TouchableOpacity>
                 </View>
             </KeyboardAvoidingView>
@@ -205,12 +186,8 @@ export default function CreatePersona() {
 }
 
 const styles = StyleSheet.create({
-    root: {
-        flex: 1,
-        backgroundColor: COLORS.surface,
-    },
+    root: { flex: 1, backgroundColor: COLORS.surface },
 
-    /* Header */
     header: {
         flexDirection: "row",
         alignItems: "center",
@@ -220,13 +197,8 @@ const styles = StyleSheet.create({
         borderBottomWidth: StyleSheet.hairlineWidth,
         borderBottomColor: COLORS.border,
     },
-    headerTitle: {
-        fontFamily: FONTS.displaySemi,
-        fontSize: SIZES.lg,
-        color: COLORS.ink,
-    },
+    headerTitle: { fontFamily: FONTS.displaySemi, fontSize: SIZES.lg, color: COLORS.ink },
 
-    /* Scroll */
     scroll: { flex: 1 },
     scrollContent: {
         paddingHorizontal: SPACING[4],
@@ -235,7 +207,6 @@ const styles = StyleSheet.create({
         gap: SPACING[1],
     },
 
-    /* Avatar */
     avatarRow: {
         flexDirection: "row",
         alignItems: "center",
@@ -249,28 +220,11 @@ const styles = StyleSheet.create({
         alignItems: "center",
         justifyContent: "center",
     },
-    avatarInitial: {
-        fontFamily: FONTS.displayBold,
-        fontSize: SIZES["3xl"],
-        color: COLORS.white,
-    },
-    colorPicker: {
-        flex: 1,
-        flexDirection: "row",
-        flexWrap: "wrap",
-        gap: SPACING[2],
-    },
-    colorSwatch: {
-        width: 30,
-        height: 30,
-        borderRadius: 15,
-    },
-    colorSwatchSelected: {
-        borderWidth: 3,
-        borderColor: COLORS.ink,
-    },
+    avatarInitial: { fontFamily: FONTS.displayBold, fontSize: SIZES["3xl"], color: COLORS.white },
+    colorPicker: { flex: 1, flexDirection: "row", flexWrap: "wrap", gap: SPACING[2] },
+    colorSwatch: { width: 30, height: 30, borderRadius: 15 },
+    colorSwatchSelected: { borderWidth: 3, borderColor: COLORS.ink },
 
-    /* Form */
     label: {
         fontFamily: FONTS.sansSemi,
         fontSize: SIZES.sm,
@@ -298,18 +252,9 @@ const styles = StyleSheet.create({
         color: COLORS.ink,
         backgroundColor: COLORS.surface,
     },
-    textArea: {
-        minHeight: 130,
-        paddingTop: SPACING[3],
-        lineHeight: 22,
-    },
+    textArea: { minHeight: 130, paddingTop: SPACING[3], lineHeight: 22 },
 
-    /* Level segment */
-    segmentRow: {
-        flexDirection: "row",
-        gap: SPACING[2],
-        marginTop: SPACING[1],
-    },
+    segmentRow: { flexDirection: "row", gap: SPACING[2], marginTop: SPACING[1] },
     segmentBtn: {
         flex: 1,
         paddingVertical: SPACING[2] + 2,
@@ -318,25 +263,11 @@ const styles = StyleSheet.create({
         borderColor: COLORS.border,
         alignItems: "center",
     },
-    segmentBtnActive: {
-        borderColor: COLORS.primary,
-        backgroundColor: COLORS.primaryPale,
-    },
-    segmentText: {
-        fontFamily: FONTS.sansSemi,
-        fontSize: SIZES.base,
-        color: COLORS.inkMuted,
-    },
-    segmentTextActive: {
-        color: COLORS.primary,
-    },
+    segmentBtnActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primaryPale },
+    segmentText: { fontFamily: FONTS.sansSemi, fontSize: SIZES.sm, color: COLORS.inkMuted },
+    segmentTextActive: { color: COLORS.primary },
 
-    /* Frequency */
-    freqRow: {
-        flexDirection: "row",
-        gap: SPACING[2],
-        marginTop: SPACING[1],
-    },
+    freqRow: { flexDirection: "row", gap: SPACING[2], marginTop: SPACING[1] },
     freqBtn: {
         flex: 1,
         paddingVertical: SPACING[3],
@@ -347,29 +278,12 @@ const styles = StyleSheet.create({
         alignItems: "center",
         gap: 3,
     },
-    freqBtnActive: {
-        borderColor: COLORS.primary,
-        backgroundColor: COLORS.primaryPale,
-    },
-    freqLabel: {
-        fontFamily: FONTS.sansSemi,
-        fontSize: SIZES.sm,
-        color: COLORS.inkMuted,
-    },
-    freqLabelActive: {
-        color: COLORS.primary,
-    },
-    freqSub: {
-        fontFamily: FONTS.sans,
-        fontSize: 11,
-        color: COLORS.inkSubtle,
-        textAlign: "center",
-    },
-    freqSubActive: {
-        color: COLORS.primaryDark,
-    },
+    freqBtnActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primaryPale },
+    freqLabel: { fontFamily: FONTS.sansSemi, fontSize: SIZES.sm, color: COLORS.inkMuted },
+    freqLabelActive: { color: COLORS.primary },
+    freqSub: { fontFamily: FONTS.sans, fontSize: 11, color: COLORS.inkSubtle, textAlign: "center" },
+    freqSubActive: { color: COLORS.primaryDark },
 
-    /* Footer CTA */
     footer: {
         paddingHorizontal: SPACING[4],
         paddingVertical: SPACING[4],
@@ -377,18 +291,12 @@ const styles = StyleSheet.create({
         borderTopColor: COLORS.border,
         backgroundColor: COLORS.surface,
     },
-    createBtn: {
+    saveBtn: {
         backgroundColor: COLORS.primary,
         borderRadius: RADIUS.lg,
         paddingVertical: SPACING[3] + 2,
         alignItems: "center",
     },
-    createBtnDisabled: {
-        opacity: 0.4,
-    },
-    createBtnText: {
-        fontFamily: FONTS.sansBold,
-        fontSize: SIZES.base,
-        color: COLORS.white,
-    },
+    saveBtnDisabled: { opacity: 0.4 },
+    saveBtnText: { fontFamily: FONTS.sansBold, fontSize: SIZES.base, color: COLORS.white },
 });

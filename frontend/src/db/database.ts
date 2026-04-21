@@ -2,7 +2,6 @@ import * as SQLite from "expo-sqlite";
 import uuid from "react-native-uuid";
 import { Conversation, ArchivedConversation } from "../types/conversation";
 import { Persona } from "../types/persona";
-import { Quest } from "../types/quest";
 import { DEFAULT_GREETING } from "../utils/chat";
 
 export type ChatMessage = {
@@ -16,8 +15,6 @@ export type ChatMessage = {
 
 let db: SQLite.SQLiteDatabase;
 
-// Penelope's bundled definition — the backend YAML is the canonical source,
-// but this ensures the app works on first launch without a network call.
 const PENELOPE_DEFAULT: Persona = {
     id: "penelope",
     name: "Penelope",
@@ -67,6 +64,7 @@ export async function initDB(): Promise<void> {
             avatar_color TEXT NOT NULL,
             level TEXT NOT NULL DEFAULT 'A1',
             persona_id TEXT NOT NULL DEFAULT '',
+            scenario TEXT NOT NULL DEFAULT 'Just Chatting',
             last_message TEXT NOT NULL DEFAULT '',
             timestamp TEXT NOT NULL DEFAULT '',
             unread INTEGER NOT NULL DEFAULT 0
@@ -135,19 +133,18 @@ export async function initDB(): Promise<void> {
         catch { /* already exists */ }
     };
 
-    // Conversations: add persona_id (new) and keep old columns for archive compat
     await addColumnSafe("conversations", "persona_id", "");
+    await addColumnSafe("conversations", "scenario", "Just Chatting");
+    // Legacy columns — kept to avoid migration errors on older DBs
     await addColumnSafe("conversations", "quest_json", "");
-    // Legacy columns — still exist in older DBs, kept to avoid migration complexity
     await addColumnSafe("conversations", "persona", "");
     await addRealColumnSafe("conversations", "question_freq", 0.5);
 
-    // Archived conversations
     await addColumnSafe("archived_conversations", "persona", "");
     await addRealColumnSafe("archived_conversations", "question_freq", 0.5);
+    // Legacy quest_json column — kept for older archives
     await addColumnSafe("archived_conversations", "quest_json", "");
 
-    // Dictionary cache
     await addColumnSafe("dictionary_cache", "headline", "");
     await addColumnSafe("dictionary_cache", "root_entry", "");
 
@@ -165,9 +162,12 @@ export async function initDB(): Promise<void> {
         PENELOPE_DEFAULT.globalId ?? null,
     );
 
-    // Migrate existing Penelope conversations to reference the personas table
     await db.runAsync(
         "UPDATE conversations SET persona_id = 'penelope' WHERE name = 'Penelope' AND persona_id = ''",
+    );
+    // Ensure existing Penelope conversations have a scenario set
+    await db.runAsync(
+        "UPDATE conversations SET scenario = 'Just Chatting' WHERE scenario = '' OR scenario IS NULL",
     );
 }
 
@@ -229,6 +229,7 @@ function rowToConversation(row: Record<string, unknown>): Conversation {
         avatarColor: row.avatar_color as string,
         level: row.level as string,
         personaId: (row.persona_id as string) || "",
+        scenario: (row.scenario as string) || "Just Chatting",
         lastMessage: row.last_message as string,
         timestamp: row.timestamp as string,
         unread: (row.unread as number) === 1,
@@ -249,13 +250,14 @@ export async function getConversation(id: string): Promise<Conversation | null> 
 
 export async function insertConversation(convo: Conversation): Promise<void> {
     await db.runAsync(
-        `INSERT OR REPLACE INTO conversations (id, name, avatar_color, level, persona_id, last_message, timestamp, unread)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT OR REPLACE INTO conversations (id, name, avatar_color, level, persona_id, scenario, last_message, timestamp, unread)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         convo.id,
         convo.name,
         convo.avatarColor,
         convo.level,
         convo.personaId,
+        convo.scenario,
         convo.lastMessage,
         convo.timestamp,
         convo.unread ? 1 : 0,
@@ -263,7 +265,10 @@ export async function insertConversation(convo: Conversation): Promise<void> {
 }
 
 export async function deleteConversation(id: string): Promise<void> {
-    await db.runAsync("DELETE FROM conversations WHERE id = ?", id);
+    await db.withTransactionAsync(async () => {
+        await db.runAsync("DELETE FROM messages WHERE conversation_id = ?", id);
+        await db.runAsync("DELETE FROM conversations WHERE id = ?", id);
+    });
 }
 
 export async function markAsRead(id: string): Promise<void> {
@@ -291,6 +296,7 @@ export async function seedIfEmpty(): Promise<void> {
         avatarColor: PENELOPE_DEFAULT.avatarColor,
         level: PENELOPE_DEFAULT.level,
         personaId: PENELOPE_DEFAULT.id,
+        scenario: "Just Chatting",
         lastMessage: DEFAULT_GREETING,
         timestamp: "10:32",
         unread: true,
@@ -353,7 +359,6 @@ export async function archiveConversation(conversationId: string): Promise<strin
     );
     if (!msgCount || msgCount.count <= 1) return null;
 
-    // Snapshot the persona text at archive time so archives remain historically accurate
     const personaSnap = await db.getFirstAsync<{ description: string; question_freq: number }>(
         "SELECT description, question_freq FROM personas WHERE id = ?",
         convo.persona_id as string,
@@ -367,8 +372,8 @@ export async function archiveConversation(conversationId: string): Promise<strin
     await db.withTransactionAsync(async () => {
         await db.runAsync(
             `INSERT INTO archived_conversations
-             (id, conversation_id, name, avatar_color, level, persona, question_freq, last_message, message_count, archived_at, quest_json)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             (id, conversation_id, name, avatar_color, level, persona, question_freq, last_message, message_count, archived_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             archiveId,
             conversationId,
             convo.name as string,
@@ -379,7 +384,6 @@ export async function archiveConversation(conversationId: string): Promise<strin
             (lastMsg?.content as string) ?? "",
             msgCount.count,
             Date.now(),
-            (convo.quest_json as string) || "",
         );
 
         await db.runAsync(
@@ -389,13 +393,6 @@ export async function archiveConversation(conversationId: string): Promise<strin
         );
 
         await db.runAsync("DELETE FROM messages WHERE conversation_id = ?", conversationId);
-
-        await db.runAsync(
-            "UPDATE conversations SET last_message = ?, timestamp = ? WHERE id = ?",
-            DEFAULT_GREETING,
-            formatTimestampForList(Date.now()),
-            conversationId,
-        );
     });
 
     return archiveId;
@@ -413,7 +410,6 @@ function rowToArchivedConversation(row: Record<string, unknown>): ArchivedConver
         lastMessage: row.last_message as string,
         messageCount: row.message_count as number,
         archivedAt: row.archived_at as number,
-        questJson: (row.quest_json as string) || undefined,
     };
 }
 
@@ -452,31 +448,6 @@ export async function deleteArchivedConversation(archiveId: string): Promise<voi
 
 export function formatTimestampForArchive(ts: number): string {
     return formatTimestampForList(ts);
-}
-
-// ── Quest Storage ────────────────────────────────────────────────────────────
-
-export async function saveQuestForConversation(conversationId: string, quest: Quest): Promise<void> {
-    await db.runAsync(
-        "UPDATE conversations SET quest_json = ? WHERE id = ?",
-        JSON.stringify(quest), conversationId,
-    );
-}
-
-export function parseQuestJson(json: string | undefined | null): Quest | null {
-    if (!json) return null;
-    try { return JSON.parse(json) as Quest; } catch { return null; }
-}
-
-export async function getQuestForConversation(conversationId: string): Promise<Quest | null> {
-    const row = await db.getFirstAsync<{ quest_json: string }>(
-        "SELECT quest_json FROM conversations WHERE id = ?", conversationId,
-    );
-    return parseQuestJson(row?.quest_json);
-}
-
-export async function clearQuestForConversation(conversationId: string): Promise<void> {
-    await db.runAsync("UPDATE conversations SET quest_json = '' WHERE id = ?", conversationId);
 }
 
 // ── Dictionary Cache ─────────────────────────────────────────────────────────

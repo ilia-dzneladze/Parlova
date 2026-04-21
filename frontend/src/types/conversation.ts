@@ -4,6 +4,7 @@ export interface Conversation {
     avatarColor: string;
     level: string;
     personaId: string;
+    scenario: string;
     lastMessage: string;
     timestamp: string;
     unread: boolean;
@@ -20,5 +21,4 @@ export interface ArchivedConversation {
     lastMessage: string;
     messageCount: number;
     archivedAt: number;
-    questJson?: string;
 }

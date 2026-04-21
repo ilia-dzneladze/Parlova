@@ -10,13 +10,10 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, useRoute, NavigationProp, RouteProp } from "@react-navigation/native";
-import { getArchivedMessages, getArchivedConversation, parseQuestJson } from "../src/db/database";
+import { getArchivedMessages, getArchivedConversation } from "../src/db/database";
 import { ArchivedConversation } from "../src/types/conversation";
 import { RootStackParamList } from "../src/types/navigation";
 import { Message, SENT_COLOR, RECV_COLOR, formatTime, isLastInGroup, isFirstInGroup, showTimestamp } from "../src/utils/chat";
-import QuestBriefing from "./QuestBriefing";
-import QuestDebrief from "./QuestDebrief";
-import { Quest } from "../src/types/quest";
 import { COLORS, FONTS, SIZES, SPACING } from "../constants/theme";
 
 const ArchiveChat = () => {
@@ -26,9 +23,6 @@ const ArchiveChat = () => {
 
     const [messages, setMessages] = useState<Message[]>([]);
     const [archive, setArchive] = useState<ArchivedConversation | null>(null);
-    const [quest, setQuest] = useState<Quest | null>(null);
-    const [showQuest, setShowQuest] = useState(false);
-    const [showDebrief, setShowDebrief] = useState(false);
 
     useEffect(() => {
         (async () => {
@@ -44,7 +38,6 @@ const ArchiveChat = () => {
                 timestamp: m.timestamp,
             })));
             setArchive(meta);
-            setQuest(parseQuestJson(meta?.questJson));
         })();
     }, [archiveId]);
 
@@ -57,16 +50,6 @@ const ArchiveChat = () => {
                     <Ionicons name="chevron-back" size={28} color={COLORS.primary} />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>{archive?.name ?? "Archived"}</Text>
-                {quest && (
-                    <View style={styles.headerActions}>
-                        <TouchableOpacity onPress={() => setShowDebrief(true)}>
-                            <Ionicons name="shield-checkmark-outline" size={20} color={COLORS.primary} />
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => setShowQuest(true)}>
-                            <Ionicons name="document-text-outline" size={20} color={COLORS.primary} />
-                        </TouchableOpacity>
-                    </View>
-                )}
             </View>
 
             <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
@@ -113,23 +96,6 @@ const ArchiveChat = () => {
                 <Ionicons name="archive-outline" size={16} color={COLORS.inkMuted} />
                 <Text style={styles.footerText}>Archived conversation</Text>
             </View>
-
-            {quest && (
-                <QuestBriefing
-                    quest={quest}
-                    visible={showQuest}
-                    onDismiss={() => setShowQuest(false)}
-                    readOnly
-                />
-            )}
-            {quest && (
-                <QuestDebrief
-                    quest={quest}
-                    visible={showDebrief}
-                    onComplete={() => setShowDebrief(false)}
-                    savedResult={quest.debrief_result}
-                />
-            )}
         </SafeAreaView>
     );
 };
@@ -147,28 +113,10 @@ const styles = StyleSheet.create({
         borderBottomColor: COLORS.border,
         backgroundColor: COLORS.bg,
     },
-    backButton: {
-        position: "absolute",
-        left: 4,
-        padding: 4,
-    },
-    headerTitle: {
-        fontFamily: FONTS.displaySemi,
-        fontSize: 17,
-        color: COLORS.ink,
-    },
-    headerActions: {
-        position: "absolute",
-        right: 12,
-        flexDirection: "row",
-        alignItems: "center",
-        gap: SPACING[4],
-    },
+    backButton: { position: "absolute", left: 4, padding: 4 },
+    headerTitle: { fontFamily: FONTS.displaySemi, fontSize: 17, color: COLORS.ink },
     scrollView: { flex: 1 },
-    scrollContent: {
-        paddingHorizontal: SPACING[4],
-        paddingBottom: SPACING[2],
-    },
+    scrollContent: { paddingHorizontal: SPACING[4], paddingBottom: SPACING[2] },
     timestamp: {
         fontFamily: FONTS.sansMedium,
         textAlign: "center",
@@ -181,20 +129,12 @@ const styles = StyleSheet.create({
     rowUser: { alignItems: "flex-end" },
     rowAI: { alignItems: "flex-start" },
     bubbleWrap: { maxWidth: "70%" },
-    bubble: {
-        borderRadius: 18,
-        paddingVertical: 10,
-        paddingHorizontal: 16,
-    },
+    bubble: { borderRadius: 18, paddingVertical: 10, paddingHorizontal: 16 },
     bubbleSent: { backgroundColor: SENT_COLOR },
     bubbleRecv: { backgroundColor: RECV_COLOR },
-    bubbleText: {
-        fontFamily: FONTS.sans,
-        fontSize: 17,
-        lineHeight: 22,
-    },
-    textSent: { color: COLORS.bubbleTextSent },
-    textRecv: { color: COLORS.bubbleTextRecv },
+    bubbleText: { fontFamily: FONTS.sans, fontSize: 17, lineHeight: 22 },
+    textSent: { color: COLORS.white },
+    textRecv: { color: COLORS.ink },
     footer: {
         flexDirection: "row",
         alignItems: "center",
@@ -205,9 +145,5 @@ const styles = StyleSheet.create({
         borderTopColor: COLORS.border,
         backgroundColor: COLORS.bg,
     },
-    footerText: {
-        fontFamily: FONTS.sans,
-        fontSize: SIZES.sm,
-        color: COLORS.inkMuted,
-    },
+    footerText: { fontFamily: FONTS.sans, fontSize: SIZES.sm, color: COLORS.inkMuted },
 });

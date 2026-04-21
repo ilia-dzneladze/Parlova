@@ -9,11 +9,13 @@ def _load(name: str) -> str:
 
 SAFETY_BLOCK = _load("safety.txt")
 SYSTEM_PROMPT_TEMPLATE = _load("system_prompt.txt")
-QUEST_BLOCK_TEMPLATE = _load("quest_block.txt")
 CONCLUSION_CHECK_PROMPT = _load("conclusion_check.txt")
 GOODBYE_PROMPT = _load("goodbye.txt")
 
 LEVEL_RULES_RAW: dict[str, str] = {
     "A1": _load("level_rules/a1.txt"),
     "A2": _load("level_rules/a2.txt"),
+    "B1": _load("level_rules/b1.txt"),
+    "B2": _load("level_rules/b2.txt"),
+    "C1": _load("level_rules/c1.txt"),
 }

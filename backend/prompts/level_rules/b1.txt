@@ -1,0 +1,5 @@
+- Use Präteritum, Perfekt, Futur, and Konjunktiv II naturally.
+- Up to 20 words per sentence. Up to 4 sentences per reply.
+- Subordinate clauses with weil, dass, wenn, obwohl, damit, etc. are natural.
+- Use B1 vocabulary — intermediate everyday language with some idiomatic expressions.
+- If the user makes grammar mistakes, ignore them. Continue the conversation naturally.

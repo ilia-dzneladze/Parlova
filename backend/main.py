@@ -8,8 +8,7 @@ from typing import Optional
 
 from pydantic import BaseModel
 from .app import main_loop
-from .llm_properties import Persona, Level
-from .quests import generate_quest, quest_from_dict, Quest
+from .llm_properties import Persona, Level, DEFAULT_SCENARIO
 import yaml
 from fastapi import FastAPI, Header, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,35 +41,29 @@ def _get_dict_conn() -> sqlite3.Connection | None:
 
 
 def _filter_example(example: str | None) -> str | None:
-    """Discard archaic or truncated examples."""
     if not example:
         return None
-    if "\u017f" in example:          # long-s ſ — old German typography
+    if "ſ" in example:
         return None
-    if example.rstrip().endswith("—"):  # truncated mid-sentence
+    if example.rstrip().endswith("—"):
         return None
     return example
 
 
 def _extract_headline(translations: list[str]) -> str | None:
-    """Pull out the shortest direct translation for display next to the headword."""
     if not translations:
         return None
     first = translations[0]
-    # "past participle of sein: been" → "been"
     m = re.search(r":\s*(.+)$", first)
     if m:
         return m.group(1).strip() or None
-    # Plain short translation with no grammatical scaffolding
     if " of " not in first and len(first) <= 40:
         return first.split(";")[0].strip() or None
     return None
 
 
 def _extract_root_word(translations: list[str]) -> str | None:
-    """Return the lemma when an entry is a declined/conjugated form."""
     for t in translations:
-        # e.g. "plural of Ding", "past participle of sein: been", "genitive of Haus"
         m = re.search(r"\bof\s+([A-ZÄÖÜa-zäöüß][A-ZÄÖÜa-zäöüß-]*)(?:\s*:|$|\s)", t)
         if m:
             return m.group(1).lower()
@@ -126,13 +119,13 @@ class PersonaRequest(BaseModel):
     persona: str
     level: str = "A1"
     question_freq: float = 0.5
+    scenario: str = DEFAULT_SCENARIO
 
 class MessageRequest(BaseModel):
     message: str
     history: list = []
     persona: Optional[PersonaRequest] = None
     message_count: int = 0
-    quest: Optional[dict] = None  # full quest object from device SQLite
 
 
 @app.post("/api/chat")
@@ -145,10 +138,10 @@ async def chat(request: MessageRequest):
             persona=p.persona,
             level=Level(p.level),
             question_freq=p.question_freq,
+            scenario=p.scenario,
         )
-    quest = quest_from_dict(request.quest) if request.quest else None
     response_text, follow_up, wrap_up, elapsed = main_loop(
-        request.message, request.history, persona, request.message_count, quest=quest,
+        request.message, request.history, persona, request.message_count,
     )
     return {
         "response": response_text,
@@ -156,25 +149,6 @@ async def chat(request: MessageRequest):
         "wrap_up": wrap_up,
         "time": elapsed,
     }
-
-
-# ── Quest endpoints ─────────────────────────────────────────────────────
-
-class QuestGenerateRequest(BaseModel):
-    level: str = "A1"
-    persona_name: str = "Penelope"
-
-
-@app.post("/api/quest/generate")
-async def quest_generate(request: QuestGenerateRequest):
-    try:
-        level = Level(request.level)
-    except ValueError:
-        raise HTTPException(status_code=400, detail=f"Invalid level: {request.level}")
-
-    quest = generate_quest(level, request.persona_name)
-    # Return the full quest (including answers) — device SQLite is the store.
-    return quest.to_dict(request.persona_name)
 
 
 @app.get("/api/personas")
@@ -199,18 +173,10 @@ async def get_personas(x_api_key: str = Header(default="")):
 
 @app.get("/api/dictionary/{word}")
 async def dictionary_lookup(word: str, direction: str = "de"):
-    """
-    direction="de"  → German → English
-    direction="en"  → English → German
-
-    Looks up the local kaikki DB first; falls back to PONS if not found.
-    """
-    # 1. Local kaikki DB (fast, offline)
     result = await asyncio.to_thread(_kaikki_lookup, word, direction)
     if result:
         return result
 
-    # 2. PONS fallback
     if not PONS_API_KEY:
         raise HTTPException(status_code=404, detail="Word not found")
 
@@ -306,7 +272,6 @@ _ABBREVIATIONS = {
     "Brit": "British English",
 }
 
-# Matches a standalone abbreviation (whole word)
 _ABBR_PATTERN = re.compile(
     r"\b(" + "|".join(re.escape(k) for k in _ABBREVIATIONS) + r")\b"
 )
@@ -326,7 +291,6 @@ async def debug_upload_db(file: UploadFile = File(...)):
 
 
 def _clean_pons(text: str) -> str:
-    """Strip HTML tags, decode entities, and expand abbreviations."""
     import html
     text = re.sub(r"<[^>]+>", "", text)
     text = html.unescape(text)
