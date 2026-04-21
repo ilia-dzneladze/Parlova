@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     Alert,
     Animated,
@@ -27,7 +27,7 @@ const SWIPE_THRESHOLD = 50;
 
 type RowAction = (id: string) => void;
 
-const ConversationRow = ({
+const ConversationRow = React.memo(({
     item,
     isLast,
     onArchive,
@@ -125,14 +125,19 @@ const ConversationRow = ({
                     </View>
 
                     {/* Avatar */}
-                    <View style={[styles.avatar, { backgroundColor: item.avatarColor }]}>
+                    <View style={useMemo(() => [styles.avatar, { backgroundColor: item.avatarColor }], [item.avatarColor])}>
                         <Text style={styles.avatarText}>{item.name[0]}</Text>
                     </View>
 
                     {/* Text content */}
                     <View style={[styles.textCol, !isLast && styles.separator]}>
                         <View style={styles.topRow}>
-                            <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
+                            <View style={styles.nameRow}>
+                                <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
+                                {item.scenario && (
+                                    <Text style={styles.scenarioTag} numberOfLines={1}> [{item.scenario}]</Text>
+                                )}
+                            </View>
                             <Text style={styles.time}>{item.timestamp}</Text>
                         </View>
                         <Text style={styles.preview} numberOfLines={1}>{item.lastMessage}</Text>
@@ -141,7 +146,7 @@ const ConversationRow = ({
             </Animated.View>
         </View>
     );
-};
+});
 
 
 async function syncGlobalPersonas(): Promise<void> {
@@ -354,7 +359,8 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         alignItems: "center",
         paddingRight: SPACING[4],
-        minHeight: 76,
+        paddingVertical: SPACING[3],
+        minHeight: 88,
         backgroundColor: COLORS.surface,
     },
 
@@ -382,10 +388,20 @@ const styles = StyleSheet.create({
     },
     topRow: {
         flexDirection: "row", justifyContent: "space-between",
-        alignItems: "baseline", marginBottom: 2,
+        alignItems: "baseline", marginBottom: 4,
+    },
+    nameRow: {
+        flexDirection: "row",
+        alignItems: "baseline",
+        flex: 1,
+        overflow: "hidden",
+        marginRight: SPACING[2],
     },
     name: {
-        fontFamily: FONTS.sansSemi, fontSize: SIZES.base, color: COLORS.ink, flex: 1,
+        fontFamily: FONTS.sansSemi, fontSize: SIZES.base, color: COLORS.ink, flexShrink: 1,
+    },
+    scenarioTag: {
+        fontFamily: FONTS.sans, fontSize: SIZES.sm, color: COLORS.inkSubtle, flexShrink: 1,
     },
     time: {
         fontFamily: FONTS.sans, fontSize: SIZES.sm, color: COLORS.inkSubtle, marginLeft: SPACING[2],

@@ -53,15 +53,6 @@ const HomeScreen = () => {
                         </Text>
                     </View>
 
-                    <View style={styles.card}>
-                        <View style={styles.cardIcon}>
-                            <Sparkles size={18} color={COLORS.primary} strokeWidth={2.5} />
-                        </View>
-                        <Text style={styles.cardTitle}>A tutor that remembers you</Text>
-                        <Text style={styles.cardBody}>
-                            Your partner knows your level and picks up where you left off.
-                        </Text>
-                    </View>
                 </View>
 
                 <Text style={styles.footer}>© 2026 Parlova</Text>
