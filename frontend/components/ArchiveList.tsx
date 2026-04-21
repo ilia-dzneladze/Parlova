@@ -14,13 +14,14 @@ import { useNavigation, useFocusEffect, NavigationProp } from "@react-navigation
 import { ArchivedConversation } from "../src/types/conversation";
 import { getArchivedConversations, deleteArchivedConversation, formatTimestampForArchive } from "../src/db/database";
 import { RootStackParamList } from "../src/types/navigation";
+import { COLORS, FONTS, SIZES, SPACING } from "../constants/theme";
 
 const ArchiveRow = ({ item, isLast, onDelete }: { item: ArchivedConversation; isLast: boolean; onDelete: (id: string) => void }) => {
     const navigation = useNavigation<NavigationProp<RootStackParamList>>();
 
     const handleDelete = () => {
         Alert.alert(
-            "Delete Chat",
+            "Delete chat",
             "This conversation will be permanently deleted.",
             [
                 { text: "Cancel", style: "cancel" },
@@ -50,7 +51,7 @@ const ArchiveRow = ({ item, isLast, onDelete }: { item: ArchivedConversation; is
             </View>
 
             <TouchableOpacity onPress={handleDelete} style={styles.deleteBtn}>
-                <Ionicons name="trash-outline" size={20} color="#FF3B30" />
+                <Ionicons name="trash-outline" size={20} color={COLORS.error} />
             </TouchableOpacity>
         </TouchableOpacity>
     );
@@ -77,12 +78,11 @@ const ArchiveList = () => {
 
     return (
         <SafeAreaView style={styles.root}>
-            <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+            <StatusBar barStyle="dark-content" backgroundColor={COLORS.surface} />
 
-            {/* Header */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                    <Ionicons name="chevron-back" size={28} color="#007AFF" />
+                    <Ionicons name="chevron-back" size={28} color={COLORS.primary} />
                 </TouchableOpacity>
             </View>
 
@@ -90,7 +90,7 @@ const ArchiveList = () => {
 
             {loaded && archives.length === 0 ? (
                 <View style={styles.empty}>
-                    <Ionicons name="archive-outline" size={48} color="#C7C7CC" />
+                    <Ionicons name="archive-outline" size={48} color={COLORS.inkSubtle} />
                     <Text style={styles.emptyText}>No archived conversations</Text>
                 </View>
             ) : (
@@ -110,46 +110,30 @@ const ArchiveList = () => {
 export default ArchiveList;
 
 const styles = StyleSheet.create({
-    root: {
-        flex: 1,
-        backgroundColor: "#FFF",
-    },
-
-    /* Header */
+    root: { flex: 1, backgroundColor: COLORS.surface },
     header: {
         flexDirection: "row",
         alignItems: "center",
-        paddingHorizontal: 4,
+        paddingHorizontal: SPACING[1],
         height: 44,
     },
-    backButton: {
-        padding: 4,
-    },
-
-    /* Title */
+    backButton: { padding: SPACING[1] },
     title: {
-        fontSize: 34,
-        fontWeight: "bold",
-        color: "#000",
-        paddingHorizontal: 16,
-        marginBottom: 8,
+        fontFamily: FONTS.displayBold,
+        fontSize: SIZES["4xl"],
+        color: COLORS.ink,
+        letterSpacing: -0.8,
+        paddingHorizontal: SPACING[4],
+        marginBottom: SPACING[2],
     },
-
-    /* List */
-    list: {
-        flex: 1,
-    },
-
-    /* Row */
+    list: { flex: 1 },
     row: {
         flexDirection: "row",
         alignItems: "center",
-        paddingLeft: 16,
-        paddingRight: 16,
+        paddingLeft: SPACING[4],
+        paddingRight: SPACING[4],
         minHeight: 76,
     },
-
-    /* Avatar */
     avatar: {
         width: 60,
         height: 60,
@@ -158,21 +142,19 @@ const styles = StyleSheet.create({
         justifyContent: "center",
     },
     avatarText: {
-        color: "#FFF",
-        fontSize: 24,
-        fontWeight: "600",
+        fontFamily: FONTS.displayBold,
+        color: COLORS.white,
+        fontSize: SIZES["2xl"],
     },
-
-    /* Text column */
     textCol: {
         flex: 1,
-        paddingLeft: 12,
-        paddingVertical: 10,
+        paddingLeft: SPACING[3],
+        paddingVertical: SPACING[2],
         justifyContent: "center",
     },
     separator: {
         borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: "#C6C6C8",
+        borderBottomColor: COLORS.border,
     },
     topRow: {
         flexDirection: "row",
@@ -181,39 +163,39 @@ const styles = StyleSheet.create({
         marginBottom: 2,
     },
     name: {
-        fontSize: 16,
-        fontWeight: "600",
-        color: "#000",
+        fontFamily: FONTS.sansSemi,
+        fontSize: SIZES.base,
+        color: COLORS.ink,
         flex: 1,
     },
     time: {
-        fontSize: 14,
-        color: "#8E8E93",
-        marginLeft: 8,
+        fontFamily: FONTS.sans,
+        fontSize: SIZES.sm,
+        color: COLORS.inkSubtle,
+        marginLeft: SPACING[2],
     },
     preview: {
-        fontSize: 14,
-        color: "#8E8E93",
+        fontFamily: FONTS.sans,
+        fontSize: SIZES.sm,
+        color: COLORS.inkMuted,
         lineHeight: 20,
     },
     msgCount: {
-        fontSize: 12,
-        color: "#AEAEB2",
+        fontFamily: FONTS.sansMedium,
+        fontSize: SIZES.xs,
+        color: COLORS.inkSubtle,
         marginTop: 2,
     },
-    deleteBtn: {
-        padding: 8,
-    },
-
-    /* Empty state */
+    deleteBtn: { padding: SPACING[2] },
     empty: {
         flex: 1,
         alignItems: "center",
         justifyContent: "center",
-        gap: 12,
+        gap: SPACING[3],
     },
     emptyText: {
-        fontSize: 17,
-        color: "#8E8E93",
+        fontFamily: FONTS.sansMedium,
+        fontSize: SIZES.base,
+        color: COLORS.inkMuted,
     },
 });

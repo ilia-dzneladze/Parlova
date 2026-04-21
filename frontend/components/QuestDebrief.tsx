@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Quest, EvaluationResult } from "../src/types/quest";
+import { COLORS, FONTS, RADIUS, SHADOWS, SIZES, SPACING } from "../constants/theme";
 
 interface Props {
     quest: Quest;
@@ -18,7 +19,8 @@ interface Props {
     savedResult?: EvaluationResult;
 }
 
-const STAR_COLORS = ["#FF3B30", "#FF9500", "#FFCC00", "#34C759"];
+// Brand-palette score tiers: rose-deep → strawberry → blush → primaryDark
+const STAR_COLORS = [COLORS.primaryDark, COLORS.primary, COLORS.primaryLight, COLORS.primaryDark];
 
 function levenshtein(a: string, b: string): number {
     const m = a.length, n = b.length;
@@ -77,7 +79,7 @@ const QuestDebrief = ({ quest, visible, onComplete, savedResult }: Props) => {
         });
     };
 
-    const starColor = result ? STAR_COLORS[Math.floor(result.score)] ?? "#34C759" : "#C6C6C8";
+    const starColor = result ? STAR_COLORS[Math.floor(result.score)] ?? COLORS.primary : COLORS.border;
 
     return (
         <Modal visible={visible} animationType="slide" transparent={false}>
@@ -86,28 +88,25 @@ const QuestDebrief = ({ quest, visible, onComplete, savedResult }: Props) => {
                     contentContainerStyle={styles.content}
                     keyboardShouldPersistTaps="handled"
                 >
-                    {/* Header */}
                     <View style={styles.headerRow}>
-                        <Ionicons name="shield-checkmark-outline" size={22} color="#007AFF" />
+                        <Ionicons name="shield-checkmark-outline" size={22} color={COLORS.primary} />
                         <Text style={styles.headerLabel}>DEBRIEF</Text>
                     </View>
                     <Text style={styles.subtitle}>
                         {result ? "Here's how you did" : "What did you learn?"}
                     </Text>
 
-                    {/* Stars (shown after submit) */}
                     {result && (
                         <View style={styles.starsRow}>
                             {Array.from({ length: result.max_score }).map((_, i) => {
                                 const earned = result.score - i;
                                 const name = earned >= 1 ? "star" : earned >= 0.5 ? "star-half" : "star-outline";
-                                const color = earned >= 0.5 ? starColor : "#D1D1D6";
+                                const color = earned >= 0.5 ? starColor : COLORS.border;
                                 return <Ionicons key={i} name={name} size={36} color={color} />;
                             })}
                         </View>
                     )}
 
-                    {/* Questions */}
                     {quest.debrief.map((q, i) => {
                         const r = result?.results[i];
 
@@ -122,13 +121,12 @@ const QuestDebrief = ({ quest, visible, onComplete, savedResult }: Props) => {
                                             const isCorrect = r && r.correct_answer === val;
                                             const isWrong = r && selected && !r.correct;
 
-                                            let btnStyle = styles.tfBtn;
-                                            if (r) {
-                                                if (isCorrect) btnStyle = { ...styles.tfBtn, ...styles.tfCorrect };
-                                                else if (isWrong) btnStyle = { ...styles.tfBtn, ...styles.tfWrong };
-                                            } else if (selected) {
-                                                btnStyle = { ...styles.tfBtn, ...styles.tfSelected };
-                                            }
+                                            const btnStyle = [
+                                                styles.tfBtn,
+                                                r && isCorrect && styles.tfCorrect,
+                                                r && isWrong && styles.tfWrong,
+                                                !r && selected && styles.tfSelected,
+                                            ];
 
                                             return (
                                                 <TouchableOpacity
@@ -159,7 +157,7 @@ const QuestDebrief = ({ quest, visible, onComplete, savedResult }: Props) => {
                                                 r && r.correct === false && styles.fillWrong,
                                             ]}
                                             placeholder="Your answer..."
-                                            placeholderTextColor="#C7C7CC"
+                                            placeholderTextColor={COLORS.inkSubtle}
                                             value={answers[i]}
                                             onChangeText={(t) => !result && setAnswer(i, t)}
                                             editable={!result}
@@ -182,14 +180,13 @@ const QuestDebrief = ({ quest, visible, onComplete, savedResult }: Props) => {
                         );
                     })}
 
-                    {/* Submit / Done button */}
                     {!result ? (
                         <TouchableOpacity
                             style={[styles.submitBtn, !allAnswered && styles.submitDisabled]}
                             onPress={handleSubmit}
                             disabled={!allAnswered}
                         >
-                            <Text style={styles.submitText}>Submit Answers</Text>
+                            <Text style={styles.submitText}>Submit answers</Text>
                         </TouchableOpacity>
                     ) : (
                         <TouchableOpacity style={styles.doneBtn} onPress={handleDone}>
@@ -205,164 +202,146 @@ const QuestDebrief = ({ quest, visible, onComplete, savedResult }: Props) => {
 export default QuestDebrief;
 
 const styles = StyleSheet.create({
-    root: {
-        flex: 1,
-        backgroundColor: "#F6F6F6",
-    },
+    root: { flex: 1, backgroundColor: COLORS.bg },
     content: {
-        padding: 24,
-        paddingTop: 60,
-        paddingBottom: 40,
+        padding: SPACING[6],
+        paddingTop: SPACING[16],
+        paddingBottom: SPACING[10],
     },
     headerRow: {
         flexDirection: "row",
         alignItems: "center",
-        gap: 8,
-        marginBottom: 4,
+        gap: SPACING[2],
+        marginBottom: SPACING[1],
     },
     headerLabel: {
-        fontSize: 13,
-        fontWeight: "700",
-        color: "#007AFF",
+        fontFamily: FONTS.sansBold,
+        fontSize: SIZES.xs,
+        color: COLORS.primary,
         letterSpacing: 1.5,
     },
     subtitle: {
-        fontSize: 24,
-        fontWeight: "700",
-        color: "#000",
-        marginTop: 8,
-        marginBottom: 24,
+        fontFamily: FONTS.displayBold,
+        fontSize: SIZES["2xl"],
+        color: COLORS.ink,
+        letterSpacing: -0.5,
+        marginTop: SPACING[2],
+        marginBottom: SPACING[6],
     },
     starsRow: {
         flexDirection: "row",
         justifyContent: "center",
-        gap: 8,
-        marginBottom: 28,
+        gap: SPACING[2],
+        marginBottom: SPACING[8],
     },
-
-    /* Question card */
     questionCard: {
-        backgroundColor: "#FFF",
-        borderRadius: 16,
-        padding: 20,
-        marginBottom: 16,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.06,
-        shadowRadius: 8,
-        elevation: 3,
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS.xl,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        padding: SPACING[5],
+        marginBottom: SPACING[4],
+        ...SHADOWS.card,
     },
     questionText: {
-        fontSize: 17,
-        fontWeight: "600",
-        color: "#000",
-        marginBottom: 14,
+        fontFamily: FONTS.displaySemi,
+        fontSize: SIZES.base,
+        color: COLORS.ink,
+        marginBottom: SPACING[3],
         lineHeight: 23,
     },
-
-    /* True/False */
     tfRow: {
         flexDirection: "row",
-        gap: 12,
+        gap: SPACING[3],
     },
     tfBtn: {
         flex: 1,
-        paddingVertical: 12,
-        borderRadius: 12,
+        paddingVertical: SPACING[3],
+        borderRadius: RADIUS.md,
         alignItems: "center",
-        backgroundColor: "#F2F2F7",
-        borderWidth: 2,
+        backgroundColor: COLORS.primaryPale,
+        borderWidth: 1.5,
         borderColor: "transparent",
     },
     tfSelected: {
-        borderColor: "#007AFF",
-        backgroundColor: "#EBF5FF",
+        borderColor: COLORS.primary,
+        backgroundColor: COLORS.primaryPale,
     },
     tfCorrect: {
-        borderColor: "#34C759",
-        backgroundColor: "#EAFBEF",
+        borderColor: COLORS.primary,
+        backgroundColor: COLORS.primaryPale,
     },
     tfWrong: {
-        borderColor: "#FF3B30",
-        backgroundColor: "#FFF0EF",
+        borderColor: COLORS.error,
+        backgroundColor: COLORS.errorBg,
     },
     tfText: {
-        fontSize: 16,
-        fontWeight: "600",
-        color: "#8E8E93",
+        fontFamily: FONTS.sansSemi,
+        fontSize: SIZES.base,
+        color: COLORS.inkMuted,
     },
-    tfTextSelected: {
-        color: "#007AFF",
-    },
-    tfTextCorrect: {
-        color: "#34C759",
-    },
-    tfTextWrong: {
-        color: "#FF3B30",
-    },
+    tfTextSelected: { color: COLORS.primaryDark },
+    tfTextCorrect: { color: COLORS.primaryDark },
+    tfTextWrong: { color: COLORS.error },
 
-    /* Fill blank */
     fillInput: {
-        borderWidth: 1,
-        borderColor: "#D1D1D6",
-        borderRadius: 12,
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        fontSize: 17,
-        color: "#000",
-        backgroundColor: "#FAFAFA",
+        fontFamily: FONTS.sans,
+        borderWidth: 1.5,
+        borderColor: COLORS.borderInput,
+        borderRadius: RADIUS.md,
+        paddingHorizontal: SPACING[4],
+        paddingVertical: SPACING[3],
+        fontSize: SIZES.base,
+        color: COLORS.ink,
+        backgroundColor: COLORS.surface,
     },
     fillCorrect: {
-        borderColor: "#34C759",
-        backgroundColor: "#EAFBEF",
+        borderColor: COLORS.primary,
+        backgroundColor: COLORS.primaryPale,
     },
     fillHalf: {
-        borderColor: "#FF9500",
-        backgroundColor: "#FFF8EE",
+        borderColor: COLORS.primaryLight,
+        backgroundColor: COLORS.primaryPale,
     },
     fillWrong: {
-        borderColor: "#FF3B30",
-        backgroundColor: "#FFF0EF",
+        borderColor: COLORS.error,
+        backgroundColor: COLORS.errorBg,
     },
     halfLabel: {
-        fontSize: 14,
-        color: "#FF9500",
-        fontWeight: "600",
+        fontFamily: FONTS.sansSemi,
+        fontSize: SIZES.sm,
+        color: COLORS.primaryDark,
         marginTop: 6,
     },
     correctLabel: {
-        fontSize: 14,
-        color: "#FF3B30",
-        fontWeight: "600",
+        fontFamily: FONTS.sansSemi,
+        fontSize: SIZES.sm,
+        color: COLORS.error,
         marginTop: 6,
     },
-
-    /* Buttons */
     submitBtn: {
-        backgroundColor: "#007AFF",
-        borderRadius: 14,
-        paddingVertical: 16,
+        backgroundColor: COLORS.primary,
+        borderRadius: RADIUS.md,
+        paddingVertical: SPACING[4],
         alignItems: "center",
-        marginTop: 8,
+        marginTop: SPACING[2],
     },
-    submitDisabled: {
-        opacity: 0.4,
-    },
+    submitDisabled: { opacity: 0.5 },
     submitText: {
-        color: "#FFF",
-        fontSize: 17,
-        fontWeight: "600",
+        fontFamily: FONTS.sansSemi,
+        color: COLORS.white,
+        fontSize: SIZES.base,
     },
     doneBtn: {
-        backgroundColor: "#34C759",
-        borderRadius: 14,
-        paddingVertical: 16,
+        backgroundColor: COLORS.primaryDark,
+        borderRadius: RADIUS.md,
+        paddingVertical: SPACING[4],
         alignItems: "center",
-        marginTop: 8,
+        marginTop: SPACING[2],
     },
     doneText: {
-        color: "#FFF",
-        fontSize: 17,
-        fontWeight: "600",
+        fontFamily: FONTS.sansSemi,
+        color: COLORS.white,
+        fontSize: SIZES.base,
     },
 });

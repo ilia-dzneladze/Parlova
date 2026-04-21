@@ -17,6 +17,7 @@ import { Message, SENT_COLOR, RECV_COLOR, formatTime, isLastInGroup, isFirstInGr
 import QuestBriefing from "./QuestBriefing";
 import QuestDebrief from "./QuestDebrief";
 import { Quest } from "../src/types/quest";
+import { COLORS, FONTS, SIZES, SPACING } from "../constants/theme";
 
 const ArchiveChat = () => {
     const navigator = useNavigation<NavigationProp<RootStackParamList>>();
@@ -49,27 +50,25 @@ const ArchiveChat = () => {
 
     return (
         <SafeAreaView style={styles.root}>
-            <StatusBar barStyle="dark-content" backgroundColor="#F6F6F6" />
+            <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
 
-            {/* Header */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigator.goBack()} style={styles.backButton}>
-                    <Ionicons name="chevron-back" size={28} color={SENT_COLOR} />
+                    <Ionicons name="chevron-back" size={28} color={COLORS.primary} />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>{archive?.name ?? "Archived"}</Text>
                 {quest && (
                     <View style={styles.headerActions}>
                         <TouchableOpacity onPress={() => setShowDebrief(true)}>
-                            <Ionicons name="shield-checkmark-outline" size={20} color="#007AFF" />
+                            <Ionicons name="shield-checkmark-outline" size={20} color={COLORS.primary} />
                         </TouchableOpacity>
                         <TouchableOpacity onPress={() => setShowQuest(true)}>
-                            <Ionicons name="document-text-outline" size={20} color="#007AFF" />
+                            <Ionicons name="document-text-outline" size={20} color={COLORS.primary} />
                         </TouchableOpacity>
                     </View>
                 )}
             </View>
 
-            {/* Messages */}
             <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
                 {messages.map((msg, i) => {
                     const isUser = msg.sender === "user";
@@ -110,9 +109,8 @@ const ArchiveChat = () => {
                 })}
             </ScrollView>
 
-            {/* Footer */}
             <View style={styles.footer}>
-                <Ionicons name="archive-outline" size={16} color="#8E8E93" />
+                <Ionicons name="archive-outline" size={16} color={COLORS.inkMuted} />
                 <Text style={styles.footerText}>Archived conversation</Text>
             </View>
 
@@ -139,20 +137,15 @@ const ArchiveChat = () => {
 export default ArchiveChat;
 
 const styles = StyleSheet.create({
-    root: {
-        flex: 1,
-        backgroundColor: "#F6F6F6",
-    },
-
-    /* Header */
+    root: { flex: 1, backgroundColor: COLORS.bg },
     header: {
         height: 44,
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
         borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: "#C6C6C8",
-        backgroundColor: "#F6F6F6",
+        borderBottomColor: COLORS.border,
+        backgroundColor: COLORS.bg,
     },
     backButton: {
         position: "absolute",
@@ -160,84 +153,61 @@ const styles = StyleSheet.create({
         padding: 4,
     },
     headerTitle: {
+        fontFamily: FONTS.displaySemi,
         fontSize: 17,
-        fontWeight: "600",
-        color: "#000",
+        color: COLORS.ink,
     },
     headerActions: {
         position: "absolute",
         right: 12,
         flexDirection: "row",
         alignItems: "center",
-        gap: 16,
+        gap: SPACING[4],
     },
-
-    /* Message list */
-    scrollView: {
-        flex: 1,
-    },
+    scrollView: { flex: 1 },
     scrollContent: {
-        paddingHorizontal: 16,
-        paddingBottom: 8,
+        paddingHorizontal: SPACING[4],
+        paddingBottom: SPACING[2],
     },
     timestamp: {
+        fontFamily: FONTS.sansMedium,
         textAlign: "center",
         fontSize: 11,
-        color: "#8E8E93",
-        marginTop: 16,
-        marginBottom: 4,
+        color: COLORS.inkMuted,
+        marginTop: SPACING[4],
+        marginBottom: SPACING[1],
     },
-
-    /* Row */
-    messageRow: {
-        flexDirection: "column",
-    },
-    rowUser: {
-        alignItems: "flex-end",
-    },
-    rowAI: {
-        alignItems: "flex-start",
-    },
-
-    /* Bubble */
-    bubbleWrap: {
-        maxWidth: "70%",
-    },
+    messageRow: { flexDirection: "column" },
+    rowUser: { alignItems: "flex-end" },
+    rowAI: { alignItems: "flex-start" },
+    bubbleWrap: { maxWidth: "70%" },
     bubble: {
         borderRadius: 18,
         paddingVertical: 10,
         paddingHorizontal: 16,
     },
-    bubbleSent: {
-        backgroundColor: SENT_COLOR,
-    },
-    bubbleRecv: {
-        backgroundColor: RECV_COLOR,
-    },
+    bubbleSent: { backgroundColor: SENT_COLOR },
+    bubbleRecv: { backgroundColor: RECV_COLOR },
     bubbleText: {
+        fontFamily: FONTS.sans,
         fontSize: 17,
         lineHeight: 22,
     },
-    textSent: {
-        color: "#FFF",
-    },
-    textRecv: {
-        color: "#000",
-    },
-
-    /* Footer */
+    textSent: { color: COLORS.bubbleTextSent },
+    textRecv: { color: COLORS.bubbleTextRecv },
     footer: {
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
         gap: 6,
-        paddingVertical: 12,
+        paddingVertical: SPACING[3],
         borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: "#C6C6C8",
-        backgroundColor: "#F6F6F6",
+        borderTopColor: COLORS.border,
+        backgroundColor: COLORS.bg,
     },
     footerText: {
-        fontSize: 14,
-        color: "#8E8E93",
+        fontFamily: FONTS.sans,
+        fontSize: SIZES.sm,
+        color: COLORS.inkMuted,
     },
 });

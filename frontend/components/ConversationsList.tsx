@@ -14,6 +14,7 @@ import { useNavigation, useFocusEffect, NavigationProp } from "@react-navigation
 import { Conversation } from "../src/types/conversation";
 import { initDB, seedIfEmpty, getConversations } from "../src/db/database";
 import { RootStackParamList } from "../src/types/navigation";
+import { COLORS, FONTS, RADIUS, SIZES, SPACING } from "../constants/theme";
 
 const ConversationRow = ({ item, isLast }: { item: Conversation; isLast: boolean }) => {
     const navigation = useNavigation<NavigationProp<RootStackParamList>>();
@@ -74,15 +75,15 @@ const ConversationsList = () => {
     if (loading) {
         return (
             <SafeAreaView style={[styles.root, styles.center]}>
-                <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-                <ActivityIndicator size="large" color="#007AFF" />
+                <StatusBar barStyle="dark-content" backgroundColor={COLORS.surface} />
+                <ActivityIndicator size="large" color={COLORS.primary} />
             </SafeAreaView>
         );
     }
 
     return (
         <SafeAreaView style={styles.root}>
-            <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+            <StatusBar barStyle="dark-content" backgroundColor={COLORS.surface} />
 
             {/* Header */}
             <View style={styles.header}>
@@ -91,10 +92,10 @@ const ConversationsList = () => {
                 </TouchableOpacity>
                 <View style={styles.headerRight}>
                     <TouchableOpacity onPress={() => navigation.navigate("ArchiveList")}>
-                        <Ionicons name="archive-outline" size={22} color="#007AFF" />
+                        <Ionicons name="archive-outline" size={22} color={COLORS.primary} />
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => {}} /* TODO: compose action */>
-                        <Ionicons name="create-outline" size={24} color="#007AFF" />
+                        <Ionicons name="create-outline" size={24} color={COLORS.primary} />
                     </TouchableOpacity>
                 </View>
             </View>
@@ -105,7 +106,7 @@ const ConversationsList = () => {
             {/* Search bar */}
             <View style={styles.searchWrap}>
                 <TouchableOpacity style={styles.searchBar} activeOpacity={1} onPress={() => {}} /* TODO: search */>
-                    <Ionicons name="search" size={16} color="#8E8E93" />
+                    <Ionicons name="search" size={16} color={COLORS.inkSubtle} />
                     <Text style={styles.searchPlaceholder}>Search</Text>
                 </TouchableOpacity>
             </View>
@@ -128,7 +129,7 @@ export default ConversationsList;
 const styles = StyleSheet.create({
     root: {
         flex: 1,
-        backgroundColor: "#FFF",
+        backgroundColor: COLORS.surface,
     },
     center: {
         alignItems: "center",
@@ -140,45 +141,48 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "center",
-        paddingHorizontal: 16,
+        paddingHorizontal: SPACING[4],
         height: 44,
     },
     editBtn: {
+        fontFamily: FONTS.sansMedium,
         fontSize: 17,
-        color: "#007AFF",
+        color: COLORS.primary,
     },
     headerRight: {
         flexDirection: "row",
         alignItems: "center",
-        gap: 16,
+        gap: SPACING[4],
     },
 
     /* Title */
     title: {
-        fontSize: 34,
-        fontWeight: "bold",
-        color: "#000",
-        paddingHorizontal: 16,
-        marginBottom: 8,
+        fontFamily: FONTS.displayBold,
+        fontSize: SIZES["4xl"],
+        color: COLORS.ink,
+        letterSpacing: -0.8,
+        paddingHorizontal: SPACING[4],
+        marginBottom: SPACING[2],
     },
 
     /* Search */
     searchWrap: {
-        paddingHorizontal: 16,
-        marginBottom: 8,
+        paddingHorizontal: SPACING[4],
+        marginBottom: SPACING[2],
     },
     searchBar: {
         flexDirection: "row",
         alignItems: "center",
-        backgroundColor: "#E5E5EA",
-        borderRadius: 10,
-        paddingHorizontal: 8,
+        backgroundColor: COLORS.primaryPale,
+        borderRadius: RADIUS.lg,
+        paddingHorizontal: SPACING[2],
         height: 36,
         gap: 6,
     },
     searchPlaceholder: {
-        fontSize: 17,
-        color: "#8E8E93",
+        fontFamily: FONTS.sans,
+        fontSize: 16,
+        color: COLORS.inkSubtle,
     },
 
     /* List */
@@ -190,7 +194,7 @@ const styles = StyleSheet.create({
     row: {
         flexDirection: "row",
         alignItems: "center",
-        paddingRight: 16,
+        paddingRight: SPACING[4],
         minHeight: 76,
     },
 
@@ -204,7 +208,7 @@ const styles = StyleSheet.create({
         width: 10,
         height: 10,
         borderRadius: 5,
-        backgroundColor: "#007AFF",
+        backgroundColor: COLORS.primary,
     },
 
     /* Avatar */
@@ -216,21 +220,21 @@ const styles = StyleSheet.create({
         justifyContent: "center",
     },
     avatarText: {
-        color: "#FFF",
-        fontSize: 24,
-        fontWeight: "600",
+        fontFamily: FONTS.displayBold,
+        color: COLORS.white,
+        fontSize: SIZES["2xl"],
     },
 
     /* Text column */
     textCol: {
         flex: 1,
-        paddingLeft: 12,
-        paddingVertical: 10,
+        paddingLeft: SPACING[3],
+        paddingVertical: SPACING[2],
         justifyContent: "center",
     },
     separator: {
         borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: "#C6C6C8",
+        borderBottomColor: COLORS.border,
     },
     topRow: {
         flexDirection: "row",
@@ -239,19 +243,21 @@ const styles = StyleSheet.create({
         marginBottom: 2,
     },
     name: {
-        fontSize: 16,
-        fontWeight: "600",
-        color: "#000",
+        fontFamily: FONTS.sansSemi,
+        fontSize: SIZES.base,
+        color: COLORS.ink,
         flex: 1,
     },
     time: {
-        fontSize: 14,
-        color: "#8E8E93",
-        marginLeft: 8,
+        fontFamily: FONTS.sans,
+        fontSize: SIZES.sm,
+        color: COLORS.inkSubtle,
+        marginLeft: SPACING[2],
     },
     preview: {
-        fontSize: 14,
-        color: "#8E8E93",
+        fontFamily: FONTS.sans,
+        fontSize: SIZES.sm,
+        color: COLORS.inkMuted,
         lineHeight: 20,
     },
 });

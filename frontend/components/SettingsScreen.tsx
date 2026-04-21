@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { COLORS, FONTS, RADIUS, SIZES, SPACING } from "../constants/theme";
 
 const MODELS = [
     { label: "Llama 4 Scout (17B)", value: "meta-llama/llama-4-scout-17b-16e-instruct" },
@@ -18,7 +19,6 @@ const SettingsScreen = () => {
             </View>
 
             <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-                {/* Model Selection */}
                 <Text style={styles.sectionHeader}>MODEL</Text>
                 <View style={styles.group}>
                     {MODELS.map((model, i) => {
@@ -33,7 +33,7 @@ const SettingsScreen = () => {
                             >
                                 <Text style={styles.rowLabel}>{model.label}</Text>
                                 {isSelected && (
-                                    <Ionicons name="checkmark" size={22} color="#007AFF" />
+                                    <Ionicons name="checkmark" size={22} color={COLORS.primary} />
                                 )}
                             </TouchableOpacity>
                         );
@@ -50,64 +50,61 @@ const SettingsScreen = () => {
 export default SettingsScreen;
 
 const styles = StyleSheet.create({
-    safe: {
-        flex: 1,
-        backgroundColor: "#F2F2F7",
-    },
+    safe: { flex: 1, backgroundColor: COLORS.bg },
     header: {
-        paddingHorizontal: 16,
-        paddingTop: 8,
-        paddingBottom: 8,
-        backgroundColor: "#F2F2F7",
+        paddingHorizontal: SPACING[4],
+        paddingTop: SPACING[2],
+        paddingBottom: SPACING[2],
+        backgroundColor: COLORS.bg,
     },
     headerTitle: {
-        fontSize: 34,
-        fontWeight: "700",
-        color: "#000",
+        fontFamily: FONTS.displayBold,
+        fontSize: SIZES["4xl"],
+        color: COLORS.ink,
+        letterSpacing: -0.8,
     },
-    scroll: {
-        flex: 1,
-    },
-    scrollContent: {
-        paddingBottom: 40,
-    },
+    scroll: { flex: 1 },
+    scrollContent: { paddingBottom: SPACING[10] },
     sectionHeader: {
-        fontSize: 13,
-        fontWeight: "400",
-        color: "#6D6D72",
-        paddingHorizontal: 16,
-        paddingTop: 24,
-        paddingBottom: 8,
-        textTransform: "uppercase",
-        letterSpacing: 0.5,
+        fontFamily: FONTS.sansSemi,
+        fontSize: SIZES.xs,
+        color: COLORS.primary,
+        paddingHorizontal: SPACING[4],
+        paddingTop: SPACING[6],
+        paddingBottom: SPACING[2],
+        letterSpacing: 1.2,
     },
     group: {
-        marginHorizontal: 16,
-        backgroundColor: "#FFF",
-        borderRadius: 10,
+        marginHorizontal: SPACING[4],
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS.lg,
+        borderWidth: 1,
+        borderColor: COLORS.border,
         overflow: "hidden",
     },
     row: {
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
-        paddingVertical: 12,
-        paddingHorizontal: 16,
-        minHeight: 44,
+        paddingVertical: SPACING[3],
+        paddingHorizontal: SPACING[4],
+        minHeight: 48,
     },
     rowBorder: {
         borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: "#C6C6C8",
+        borderBottomColor: COLORS.border,
     },
     rowLabel: {
-        fontSize: 17,
-        color: "#000",
+        fontFamily: FONTS.sansMedium,
+        fontSize: SIZES.base,
+        color: COLORS.ink,
     },
     sectionFooter: {
-        fontSize: 13,
-        color: "#6D6D72",
-        paddingHorizontal: 16,
-        paddingTop: 8,
-        lineHeight: 18,
+        fontFamily: FONTS.sans,
+        fontSize: SIZES.sm,
+        color: COLORS.inkMuted,
+        paddingHorizontal: SPACING[4],
+        paddingTop: SPACING[2],
+        lineHeight: 20,
     },
 });

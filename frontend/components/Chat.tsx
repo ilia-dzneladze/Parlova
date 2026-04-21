@@ -30,6 +30,7 @@ import { Quest, EvaluationResult } from "../src/types/quest";
 import { Message, SENT_COLOR, RECV_COLOR, DEFAULT_GREETING, formatTime, isLastInGroup, isFirstInGroup, showTimestamp } from "../src/utils/chat";
 import QuestBriefing from "./QuestBriefing";
 import QuestDebrief from "./QuestDebrief";
+import { COLORS, FONTS, RADIUS, SIZES } from "../constants/theme";
 
 const API_BASE = 'https://overabusive-nonchimerically-marvella.ngrok-free.dev';
 
@@ -527,7 +528,7 @@ const Chat = () => {
             behavior={Platform.OS === "ios" ? "padding" : "height"}
             keyboardVerticalOffset={KEYBOARD_OFFSET}
         >
-            <StatusBar barStyle="dark-content" backgroundColor="#F6F6F6" />
+            <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
             <SafeAreaView style={styles.safeArea}>
                 {/* Header */}
                 <View style={styles.header}>
@@ -538,7 +539,7 @@ const Chat = () => {
                     <View style={styles.headerRight}>
                         {quest && (
                             <TouchableOpacity onPress={() => setShowBriefing(true)} style={styles.questBtn}>
-                                <Ionicons name="document-text-outline" size={20} color="#007AFF" />
+                                <Ionicons name="document-text-outline" size={20} color={COLORS.primary} />
                             </TouchableOpacity>
                         )}
                         <TouchableOpacity onPress={handleEndConversation} style={styles.endButton}>
@@ -622,12 +623,12 @@ const Chat = () => {
                 {/* Input Bar */}
                 <View style={styles.inputBar}>
                     <TouchableOpacity onPress={() => openDictionary()} style={styles.dictBtn}>
-                        <Ionicons name="book-outline" size={24} color={dictCount >= DAILY_LIMIT ? "#C7C7CC" : "#007AFF"} />
+                        <Ionicons name="book-outline" size={24} color={dictCount >= DAILY_LIMIT ? COLORS.inkSubtle : COLORS.primary} />
                     </TouchableOpacity>
                     <View style={styles.inputPill}>
                         <TextInput
-                            placeholder="iMessage"
-                            placeholderTextColor="#8E8E93"
+                            placeholder="Type in German..."
+                            placeholderTextColor={COLORS.inkSubtle}
                             multiline
                             value={message}
                             onChangeText={setMessage}
@@ -642,7 +643,7 @@ const Chat = () => {
                         ]}
                         disabled={!message.trim()}
                     >
-                        <Ionicons name="arrow-up" size={22} color="#FFF" />
+                        <Ionicons name="arrow-up" size={22} color={COLORS.white} />
                     </TouchableOpacity>
                 </View>
 
@@ -691,7 +692,7 @@ const Chat = () => {
                             <View style={styles.modalHeader}>
                                 <Text style={styles.modalTitle}>Dictionary</Text>
                                 <TouchableOpacity onPress={closeDictionary}>
-                                    <Ionicons name="close-circle-outline" size={28} color="#8E8E93" />
+                                    <Ionicons name="close-circle-outline" size={28} color={COLORS.inkMuted} />
                                 </TouchableOpacity>
                             </View>
 
@@ -737,10 +738,10 @@ const Chat = () => {
 
                             {/* Search bar */}
                             <View style={styles.dictInputPill}>
-                                <Ionicons name="search" size={16} color="#8E8E93" style={{ marginRight: 8 }} />
+                                <Ionicons name="search" size={16} color={COLORS.inkMuted} style={{ marginRight: 8 }} />
                                 <TextInput
                                     placeholder={dictDirection === "de" ? "Search German words..." : "Search English words..."}
-                                    placeholderTextColor="#8E8E93"
+                                    placeholderTextColor={COLORS.inkSubtle}
                                     value={dictWord}
                                     onChangeText={handleDictSearch}
                                     autoCapitalize="none"
@@ -809,10 +810,10 @@ const Chat = () => {
                                             disabled={dictLoading}
                                         >
                                             {dictLoading ? (
-                                                <ActivityIndicator size="small" color="#007AFF" />
+                                                <ActivityIndicator size="small" color={COLORS.primary} />
                                             ) : (
                                                 <>
-                                                    <Ionicons name="add-circle-outline" size={22} color="#007AFF" />
+                                                    <Ionicons name="add-circle-outline" size={22} color={COLORS.primary} />
                                                     <Text style={styles.dictAddText}>
                                                         Look up "{dictWord.trim().toLowerCase()}"
                                                     </Text>
@@ -836,11 +837,11 @@ export default Chat;
 const styles = StyleSheet.create({
     root: {
         flex: 1,
-        backgroundColor: "#F6F6F6",
+        backgroundColor: COLORS.bg,
     },
     safeArea: {
         flex: 1,
-        backgroundColor: "#F6F6F6",
+        backgroundColor: COLORS.bg,
     },
 
     /* Header */
@@ -850,8 +851,8 @@ const styles = StyleSheet.create({
         alignItems: "center",
         justifyContent: "center",
         borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: "#C6C6C8",
-        backgroundColor: "#F6F6F6",
+        borderBottomColor: COLORS.border,
+        backgroundColor: COLORS.bg,
     },
     backButton: {
         position: "absolute",
@@ -859,9 +860,9 @@ const styles = StyleSheet.create({
         padding: 4,
     },
     headerTitle: {
+        fontFamily: FONTS.displaySemi,
         fontSize: 17,
-        fontWeight: "600",
-        color: "#000",
+        color: COLORS.ink,
     },
     headerRight: {
         position: "absolute",
@@ -877,9 +878,9 @@ const styles = StyleSheet.create({
         padding: 4,
     },
     endButtonText: {
+        fontFamily: FONTS.sansMedium,
         fontSize: 15,
-        color: "#FF3B30",
-        fontWeight: "500",
+        color: COLORS.error,
     },
 
     /* Message list */
@@ -891,9 +892,10 @@ const styles = StyleSheet.create({
         paddingBottom: 8,
     },
     timestamp: {
+        fontFamily: FONTS.sansMedium,
         textAlign: "center",
         fontSize: 11,
-        color: "#8E8E93",
+        color: COLORS.inkMuted,
         marginTop: 16,
         marginBottom: 4,
     },
@@ -925,14 +927,15 @@ const styles = StyleSheet.create({
         backgroundColor: RECV_COLOR,
     },
     bubbleText: {
+        fontFamily: FONTS.sans,
         fontSize: 17,
         lineHeight: 22,
     },
     textSent: {
-        color: "#FFF",
+        color: COLORS.white,
     },
     textRecv: {
-        color: "#000",
+        color: COLORS.ink,
     },
 
     /* Typing indicator */
@@ -947,13 +950,13 @@ const styles = StyleSheet.create({
         width: 8,
         height: 8,
         borderRadius: 4,
-        backgroundColor: "#8E8E93",
+        backgroundColor: COLORS.inkMuted,
     },
 
     /* Tapped timestamp */
     tappedTime: {
         fontSize: 11,
-        color: "#8E8E93",
+        color: COLORS.inkMuted,
         marginTop: 2,
         paddingHorizontal: 4,
     },
@@ -965,21 +968,22 @@ const styles = StyleSheet.create({
         gap: 6,
         paddingHorizontal: 8,
         paddingVertical: 6,
-        backgroundColor: "#F6F6F6",
+        backgroundColor: COLORS.bg,
         borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: "#C6C6C8",
+        borderTopColor: COLORS.border,
     },
     inputPill: {
         flex: 1,
         borderRadius: 20,
         borderWidth: 1,
-        borderColor: "#C7C7CC",
-        backgroundColor: "#FFF",
+        borderColor: COLORS.inkSubtle,
+        backgroundColor: COLORS.surface,
         paddingHorizontal: 12,
     },
     input: {
+        fontFamily: FONTS.sans,
         fontSize: 17,
-        color: "#000",
+        color: COLORS.ink,
         maxHeight: 100,
         minHeight: 36,
         paddingVertical: 8,
@@ -996,7 +1000,7 @@ const styles = StyleSheet.create({
         backgroundColor: SENT_COLOR,
     },
     sendInactive: {
-        backgroundColor: "#C7C7CC",
+        backgroundColor: COLORS.inkSubtle,
     },
 
     /* Dictionary button */
@@ -1018,7 +1022,7 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     modalSheet: {
-        backgroundColor: "#FFF",
+        backgroundColor: COLORS.surface,
         borderTopLeftRadius: 16,
         borderTopRightRadius: 16,
         paddingHorizontal: 20,
@@ -1032,7 +1036,7 @@ const styles = StyleSheet.create({
         width: 36,
         height: 5,
         borderRadius: 3,
-        backgroundColor: "#D1D1D6",
+        backgroundColor: COLORS.border,
     },
     modalHeader: {
         flexDirection: "row",
@@ -1041,15 +1045,16 @@ const styles = StyleSheet.create({
         marginBottom: 4,
     },
     modalTitle: {
+        fontFamily: FONTS.displayBold,
         fontSize: 20,
-        fontWeight: "600",
-        color: "#000",
+        color: COLORS.ink,
+        letterSpacing: -0.3,
     },
 
     /* Direction toggle */
     dictToggleRow: {
         flexDirection: "row",
-        backgroundColor: "#F2F2F7",
+        backgroundColor: COLORS.primaryPale,
         borderRadius: 10,
         padding: 2,
         marginBottom: 12,
@@ -1061,26 +1066,27 @@ const styles = StyleSheet.create({
         alignItems: "center",
     },
     dictToggleActive: {
-        backgroundColor: "#FFF",
-        shadowColor: "#000",
+        backgroundColor: COLORS.surface,
+        shadowColor: COLORS.ink,
         shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.1,
         shadowRadius: 2,
         elevation: 2,
     },
     dictToggleText: {
+        fontFamily: FONTS.sansMedium,
         fontSize: 14,
-        fontWeight: "500",
-        color: "#8E8E93",
+        color: COLORS.inkMuted,
     },
     dictToggleTextActive: {
-        color: "#000",
+        color: COLORS.ink,
     },
 
     /* Counter */
     dictCounter: {
+        fontFamily: FONTS.sans,
         fontSize: 13,
-        color: "#8E8E93",
+        color: COLORS.inkMuted,
         marginBottom: 14,
     },
 
@@ -1089,23 +1095,24 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         alignItems: "center",
         borderRadius: 12,
-        backgroundColor: "#F2F2F7",
+        backgroundColor: COLORS.primaryPale,
         paddingHorizontal: 12,
         marginBottom: 12,
     },
     dictInput: {
+        fontFamily: FONTS.sans,
         fontSize: 16,
-        color: "#000",
+        color: COLORS.ink,
         height: 40,
     },
 
     /* Search results list */
     dictListContainer: {
-        backgroundColor: "#FFF",
+        backgroundColor: COLORS.surface,
         borderRadius: 12,
         overflow: "hidden",
         borderWidth: StyleSheet.hairlineWidth,
-        borderColor: "#C6C6C8",
+        borderColor: COLORS.border,
     },
     dictListRow: {
         flexDirection: "row",
@@ -1114,16 +1121,16 @@ const styles = StyleSheet.create({
         paddingVertical: 12,
         paddingHorizontal: 16,
         borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: "#C6C6C8",
+        borderBottomColor: COLORS.border,
     },
     dictListWord: {
+        fontFamily: FONTS.sansMedium,
         fontSize: 17,
-        fontWeight: "500",
-        color: "#000",
+        color: COLORS.ink,
     },
     dictListPreview: {
         fontSize: 15,
-        color: "#8E8E93",
+        color: COLORS.inkMuted,
         flex: 1,
         textAlign: "right",
         marginLeft: 12,
@@ -1137,22 +1144,22 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
     },
     dictAddText: {
+        fontFamily: FONTS.sansSemi,
         fontSize: 16,
-        color: "#007AFF",
-        fontWeight: "500",
+        color: COLORS.primary,
     },
 
     /* Error */
     dictError: {
         fontSize: 15,
-        color: "#FF3B30",
+        color: COLORS.error,
         textAlign: "center",
         marginTop: 8,
     },
 
     /* Result card */
     dictResultCard: {
-        backgroundColor: "#F2F2F7",
+        backgroundColor: COLORS.primaryPale,
         borderRadius: 12,
         padding: 16,
     },
@@ -1160,13 +1167,14 @@ const styles = StyleSheet.create({
         marginBottom: 10,
     },
     dictResultWord: {
+        fontFamily: FONTS.displayBold,
         fontSize: 22,
-        fontWeight: "700",
-        color: "#000",
+        color: COLORS.ink,
+        letterSpacing: -0.3,
     },
     dictResultMeta: {
         fontSize: 14,
-        color: "#8E8E93",
+        color: COLORS.inkMuted,
         marginTop: 2,
     },
     dictTranslations: {
@@ -1179,31 +1187,31 @@ const styles = StyleSheet.create({
     },
     dictBullet: {
         fontSize: 16,
-        color: "#007AFF",
+        color: COLORS.primary,
         lineHeight: 22,
     },
     dictTransText: {
         fontSize: 16,
-        color: "#000",
+        color: COLORS.ink,
         lineHeight: 22,
         flex: 1,
     },
     dictExampleBox: {
         borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: "#C6C6C8",
+        borderTopColor: COLORS.border,
         paddingTop: 10,
     },
     dictExampleLabel: {
         fontSize: 12,
         fontWeight: "600",
-        color: "#8E8E93",
+        color: COLORS.inkMuted,
         textTransform: "uppercase",
         letterSpacing: 0.5,
         marginBottom: 4,
     },
     dictExampleText: {
         fontSize: 15,
-        color: "#3C3C43",
+        color: COLORS.ink,
         fontStyle: "italic",
         lineHeight: 20,
     },

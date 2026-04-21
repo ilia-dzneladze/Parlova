@@ -1,10 +1,26 @@
 import React from 'react';
+import { View, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Home, MessageSquare, User, Settings } from 'lucide-react-native';
+import {
+    useFonts as useBricolage,
+    BricolageGrotesque_400Regular,
+    BricolageGrotesque_500Medium,
+    BricolageGrotesque_600SemiBold,
+    BricolageGrotesque_700Bold,
+    BricolageGrotesque_800ExtraBold,
+} from '@expo-google-fonts/bricolage-grotesque';
+import {
+    useFonts as useDMSans,
+    DMSans_400Regular,
+    DMSans_500Medium,
+    DMSans_600SemiBold,
+    DMSans_700Bold,
+} from '@expo-google-fonts/dm-sans';
 import ConversationsList from "@/components/ConversationsList";
 import Chat from "@/components/Chat";
 import ArchiveList from "@/components/ArchiveList";
@@ -13,12 +29,10 @@ import HomeScreen from "@/components/HomeScreen";
 import MeScreen from "@/components/MeScreen";
 import SettingsScreen from "@/components/SettingsScreen";
 import WordList from "@/components/WordList";
+import { COLORS } from "./constants/theme";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
-
-const ACTIVE_COLOR = "#007AFF";
-const INACTIVE_COLOR = "#8E8E93";
 
 function TabNavigator() {
   return (
@@ -26,9 +40,12 @@ function TabNavigator() {
       initialRouteName="Conversations"
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: ACTIVE_COLOR,
-        tabBarInactiveTintColor: INACTIVE_COLOR,
-        tabBarStyle: { borderTopColor: "#C6C6C8" },
+        tabBarActiveTintColor: COLORS.primary,
+        tabBarInactiveTintColor: COLORS.inkSubtle,
+        tabBarStyle: {
+          borderTopColor: COLORS.border,
+          backgroundColor: COLORS.white,
+        },
       }}
     >
       <Tab.Screen
@@ -66,6 +83,28 @@ function TabNavigator() {
 }
 
 export default function App() {
+  const [bricolageLoaded] = useBricolage({
+    BricolageGrotesque_400Regular,
+    BricolageGrotesque_500Medium,
+    BricolageGrotesque_600SemiBold,
+    BricolageGrotesque_700Bold,
+    BricolageGrotesque_800ExtraBold,
+  });
+  const [dmSansLoaded] = useDMSans({
+    DMSans_400Regular,
+    DMSans_500Medium,
+    DMSans_600SemiBold,
+    DMSans_700Bold,
+  });
+
+  if (!bricolageLoaded || !dmSansLoaded) {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.bg }}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
   return (
     <SafeAreaProvider>
       <StatusBar style="dark" />

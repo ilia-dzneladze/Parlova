@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { getAllDictEntries, DictEntry } from "../src/db/database";
+import { COLORS, FONTS, RADIUS, SIZES, SPACING } from "../constants/theme";
 
 const WordList = () => {
     const navigator = useNavigation();
@@ -41,7 +42,7 @@ const WordList = () => {
                     <View style={styles.metaRow}>
                         {item.gender && <Text style={styles.badge}>{item.gender}</Text>}
                         {item.partOfSpeech && <Text style={styles.badge}>{item.partOfSpeech}</Text>}
-                        <Ionicons name={isOpen ? "chevron-up" : "chevron-down"} size={18} color="#8E8E93" />
+                        <Ionicons name={isOpen ? "chevron-up" : "chevron-down"} size={18} color={COLORS.inkSubtle} />
                     </View>
                 </View>
                 {isOpen && (
@@ -68,15 +69,15 @@ const WordList = () => {
         <SafeAreaView style={styles.safe} edges={["top"]}>
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigator.goBack()} style={styles.backBtn}>
-                    <Ionicons name="chevron-back" size={28} color="#007AFF" />
+                    <Ionicons name="chevron-back" size={28} color={COLORS.primary} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>My Words</Text>
+                <Text style={styles.headerTitle}>My words</Text>
                 <View style={{ width: 36 }} />
             </View>
 
             {entries.length === 0 ? (
                 <View style={styles.empty}>
-                    <Ionicons name="book-outline" size={48} color="#C7C7CC" />
+                    <Ionicons name="book-outline" size={48} color={COLORS.inkSubtle} />
                     <Text style={styles.emptyText}>No words yet</Text>
                     <Text style={styles.emptyHint}>Words you look up in chat will appear here.</Text>
                 </View>
@@ -95,68 +96,90 @@ const WordList = () => {
 export default WordList;
 
 const styles = StyleSheet.create({
-    safe: { flex: 1, backgroundColor: "#F2F2F7" },
+    safe: { flex: 1, backgroundColor: COLORS.bg },
     header: {
         height: 44,
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
-        paddingHorizontal: 4,
+        paddingHorizontal: SPACING[1],
         borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: "#C6C6C8",
-        backgroundColor: "#F2F2F7",
+        borderBottomColor: COLORS.border,
+        backgroundColor: COLORS.bg,
     },
-    backBtn: { padding: 4 },
-    headerTitle: { fontSize: 17, fontWeight: "600", color: "#000" },
-    list: { padding: 16, paddingBottom: 40 },
+    backBtn: { padding: SPACING[1] },
+    headerTitle: {
+        fontFamily: FONTS.displaySemi,
+        fontSize: 17,
+        color: COLORS.ink,
+    },
+    list: { padding: SPACING[4], paddingBottom: SPACING[10] },
     row: {
-        backgroundColor: "#FFF",
-        borderRadius: 12,
-        marginBottom: 8,
-        padding: 14,
+        backgroundColor: COLORS.surface,
+        borderRadius: RADIUS.lg,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        marginBottom: SPACING[2],
+        padding: SPACING[4],
     },
-    rowExpanded: {
-        backgroundColor: "#FFF",
-    },
+    rowExpanded: { backgroundColor: COLORS.surface },
     rowHeader: {
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
     },
-    word: { fontSize: 18, fontWeight: "600", color: "#000" },
-    preview: { fontSize: 14, color: "#8E8E93", marginTop: 2 },
+    word: {
+        fontFamily: FONTS.displaySemi,
+        fontSize: SIZES.lg,
+        color: COLORS.ink,
+    },
+    preview: {
+        fontFamily: FONTS.sans,
+        fontSize: SIZES.sm,
+        color: COLORS.inkMuted,
+        marginTop: 2,
+    },
     metaRow: { flexDirection: "row", alignItems: "center", gap: 6 },
     badge: {
+        fontFamily: FONTS.sansSemi,
         fontSize: 11,
-        color: "#007AFF",
-        backgroundColor: "#E8F0FE",
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-        borderRadius: 4,
+        color: COLORS.primaryDark,
+        backgroundColor: COLORS.primaryPale,
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: RADIUS.pill,
         overflow: "hidden",
-        fontWeight: "500",
+        letterSpacing: 0.4,
+        textTransform: "uppercase",
     },
-    detail: { marginTop: 12 },
+    detail: { marginTop: SPACING[3] },
     transRow: { flexDirection: "row", gap: 6, marginBottom: 3 },
-    bullet: { fontSize: 16, color: "#007AFF", lineHeight: 22 },
-    transText: { fontSize: 16, color: "#000", lineHeight: 22, flex: 1 },
+    bullet: { fontSize: 16, color: COLORS.primary, lineHeight: 22 },
+    transText: {
+        fontFamily: FONTS.sans,
+        fontSize: SIZES.base,
+        color: COLORS.ink,
+        lineHeight: 22,
+        flex: 1,
+    },
     exampleBox: {
         borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: "#C6C6C8",
-        paddingTop: 10,
-        marginTop: 8,
+        borderTopColor: COLORS.border,
+        paddingTop: SPACING[3],
+        marginTop: SPACING[2],
     },
     exampleLabel: {
-        fontSize: 12,
-        fontWeight: "600",
-        color: "#8E8E93",
+        fontFamily: FONTS.sansSemi,
+        fontSize: SIZES.xs,
+        color: COLORS.primary,
         textTransform: "uppercase",
-        letterSpacing: 0.5,
+        letterSpacing: 1,
         marginBottom: 4,
     },
     exampleText: {
-        fontSize: 15,
-        color: "#3C3C43",
+        fontFamily: FONTS.sans,
+        fontSize: SIZES.sm,
+        color: COLORS.ink,
         fontStyle: "italic",
         lineHeight: 20,
     },
@@ -164,8 +187,18 @@ const styles = StyleSheet.create({
         flex: 1,
         alignItems: "center",
         justifyContent: "center",
-        gap: 8,
+        gap: SPACING[2],
     },
-    emptyText: { fontSize: 18, fontWeight: "600", color: "#8E8E93" },
-    emptyHint: { fontSize: 14, color: "#8E8E93", textAlign: "center", paddingHorizontal: 40 },
+    emptyText: {
+        fontFamily: FONTS.displaySemi,
+        fontSize: SIZES.lg,
+        color: COLORS.inkMuted,
+    },
+    emptyHint: {
+        fontFamily: FONTS.sans,
+        fontSize: SIZES.sm,
+        color: COLORS.inkMuted,
+        textAlign: "center",
+        paddingHorizontal: SPACING[10],
+    },
 });

@@ -6,8 +6,10 @@ export type Message = {
     timestamp: number;
 };
 
-export const SENT_COLOR = "#007AFF";
-export const RECV_COLOR = "#E9E9EB";
+import { COLORS } from "../../constants/theme";
+
+export const SENT_COLOR = COLORS.bubbleSent;
+export const RECV_COLOR = COLORS.bubbleRecv;
 export const TEN_MIN = 10 * 60 * 1000;
 export const DEFAULT_GREETING = "Hallo! Wie geht es dir?";
 
