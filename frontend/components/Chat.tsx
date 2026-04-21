@@ -23,16 +23,16 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, useRoute, NavigationProp, RouteProp } from "@react-navigation/native";
 import uuid from "react-native-uuid";
-import { getMessages, saveMessages, appendMessage, archiveConversation, markAsRead, markAsUnread, getConversation, saveQuestForConversation, getQuestForConversation, clearQuestForConversation, ChatMessage, getDictionaryUsage, incrementDictionaryUsage, searchDictCache, saveDictEntry, DictEntry } from "../src/db/database";
+import { getMessages, saveMessages, appendMessage, archiveConversation, markAsRead, markAsUnread, getConversation, getPersona, saveQuestForConversation, getQuestForConversation, clearQuestForConversation, ChatMessage, getDictionaryUsage, incrementDictionaryUsage, searchDictCache, saveDictEntry, DictEntry } from "../src/db/database";
 import { Conversation } from "../src/types/conversation";
+import { Persona } from "../src/types/persona";
 import { RootStackParamList } from "../src/types/navigation";
 import { Quest, EvaluationResult } from "../src/types/quest";
 import { Message, SENT_COLOR, RECV_COLOR, DEFAULT_GREETING, formatTime, isLastInGroup, isFirstInGroup, showTimestamp } from "../src/utils/chat";
 import QuestBriefing from "./QuestBriefing";
 import QuestDebrief from "./QuestDebrief";
 import { COLORS, FONTS } from "../constants/theme";
-
-const API_BASE = 'https://overabusive-nonchimerically-marvella.ngrok-free.dev';
+import { API_BASE } from "../constants/api";
 
 // Tweak this to adjust the gap between keyboard and input bar (negative = closer)
 const KEYBOARD_OFFSET = -30;
@@ -80,6 +80,7 @@ const Chat = () => {
     const messagesRef = useRef<Message[]>([]);
     const mountedRef = useRef(true);
     const [conversation, setConversation] = useState<Conversation | null>(null);
+    const [currentPersona, setCurrentPersona] = useState<Persona | null>(null);
 
     const [messages, setMessages] = useState<Message[]>([]);
     const [message, setMessage] = useState<string>("");
@@ -270,7 +271,11 @@ const Chat = () => {
         (async () => {
             await markAsRead(conversationId);
             const convo = await getConversation(conversationId);
-            if (convo) setConversation(convo);
+            if (convo) {
+                setConversation(convo);
+                const p = await getPersona(convo.personaId);
+                if (p) setCurrentPersona(p);
+            }
             const saved = await getMessages(conversationId);
             // "Fresh" = no messages, or only the default greeting
             const isFresh = saved.length === 0
@@ -373,11 +378,11 @@ const Chat = () => {
                             history: currentHistory,
                             message_count: userMsgCount,
                             quest: questRef.current ?? undefined,
-                            persona: conversation ? {
-                                name: conversation.name,
-                                persona: conversation.persona,
-                                level: conversation.level,
-                                question_freq: conversation.questionFreq,
+                            persona: currentPersona ? {
+                                name: currentPersona.name,
+                                persona: currentPersona.description,
+                                level: currentPersona.level,
+                                question_freq: currentPersona.questionFreq,
                             } : undefined,
                         }),
                     }),

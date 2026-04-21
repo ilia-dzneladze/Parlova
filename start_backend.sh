@@ -49,12 +49,12 @@ if [ -z "$NGROK_URL" ]; then
     exit 1
 fi
 
-# Patch ChatScreen.tsx
-sed -i "s|const API_BASE = '.*'|const API_BASE = '$NGROK_URL'|" frontend/components/Chat.tsx
+# Patch shared API config with the new ngrok URL
+sed -i "s|export const API_BASE = '.*'|export const API_BASE = '$NGROK_URL'|" frontend/constants/api.ts
 
 echo ""
 echo "  Backend : $NGROK_URL"
-echo "  Chat.tsx patched with new URL"
+echo "  constants/api.ts patched with new URL"
 echo ""
 echo "  Ctrl+C to stop everything"
 

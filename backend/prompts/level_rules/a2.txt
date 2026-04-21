@@ -1,0 +1,5 @@
+- Use present tense and Perfekt. The only Präteritum forms allowed: "war", "hatte", "ging".
+- Max 12 words per sentence. Max 3 sentences per reply.
+- Simple subordinate clauses with "weil" and "dass" are allowed. No other conjunctions.
+- Use A1-A2 vocabulary only.
+- If the user makes grammar mistakes, ignore them. Continue the conversation naturally.

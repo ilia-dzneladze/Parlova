@@ -12,7 +12,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useFocusEffect, NavigationProp } from "@react-navigation/native";
 import { Conversation } from "../src/types/conversation";
-import { initDB, seedIfEmpty, getConversations } from "../src/db/database";
+import { initDB, seedIfEmpty, getConversations, upsertPersona } from "../src/db/database";
+import { Persona } from "../src/types/persona";
+import { API_BASE, PERSONAS_API_KEY } from "../constants/api";
 import { RootStackParamList } from "../src/types/navigation";
 import { COLORS, FONTS, RADIUS, SIZES, SPACING } from "../constants/theme";
 
@@ -48,6 +50,19 @@ const ConversationRow = ({ item, isLast }: { item: Conversation; isLast: boolean
 };
 
 
+async function syncGlobalPersonas(): Promise<void> {
+    try {
+        const headers: Record<string, string> = { "ngrok-skip-browser-warning": "true" };
+        if (PERSONAS_API_KEY) headers["x-api-key"] = PERSONAS_API_KEY;
+        const resp = await fetch(`${API_BASE}/api/personas`, { headers });
+        if (!resp.ok) return;
+        const personas: Persona[] = await resp.json();
+        for (const p of personas) await upsertPersona(p);
+    } catch {
+        // Silently fail — bundled defaults remain active
+    }
+}
+
 const ConversationsList = () => {
     const navigation = useNavigation<NavigationProp<RootStackParamList>>();
     const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -60,6 +75,8 @@ const ConversationsList = () => {
             const data = await getConversations();
             setConversations(data);
             setLoading(false);
+            // Sync global personas from backend in the background
+            syncGlobalPersonas();
         })();
     }, []);
 
@@ -119,6 +136,16 @@ const ConversationsList = () => {
                     <ConversationRow item={item} isLast={index === conversations.length - 1} />
                 )}
                 style={styles.list}
+                ListFooterComponent={
+                    <TouchableOpacity
+                        style={styles.addUserBtn}
+                        activeOpacity={0.7}
+                        onPress={() => navigation.navigate("CreatePersona")}
+                    >
+                        <Ionicons name="add-circle-outline" size={20} color={COLORS.primary} />
+                        <Text style={styles.addUserText}>Add Character</Text>
+                    </TouchableOpacity>
+                }
             />
         </SafeAreaView>
     );
@@ -188,6 +215,20 @@ const styles = StyleSheet.create({
     /* List */
     list: {
         flex: 1,
+    },
+
+    /* Add Character button */
+    addUserBtn: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: SPACING[2],
+        paddingHorizontal: SPACING[4] + 20,
+        paddingVertical: SPACING[4],
+    },
+    addUserText: {
+        fontFamily: FONTS.sansMedium,
+        fontSize: SIZES.base,
+        color: COLORS.primary,
     },
 
     /* Row */

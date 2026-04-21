@@ -2,6 +2,7 @@ import random
 import re
 import time
 from ..llm_properties import groq_client, Persona, Level, create_texter, LEVEL_RULES
+from ..prompts import CONCLUSION_CHECK_PROMPT, GOODBYE_PROMPT
 
 
 # If the model gets jailbroken, catch it on the way out.
@@ -42,28 +43,6 @@ def _looks_off_topic(text: str) -> bool:
     english_ratio = sum(1 for w in words if w in english_words) / len(words)
     return english_ratio > 0.4
 
-CONCLUSION_CHECK_PROMPT = (
-    "You are reviewing a German text conversation between two friends. "
-    "Has the conversation reached a natural stopping point? "
-    "A natural stopping point means: they said goodbye, the topic fizzled out, "
-    "or the exchange feels complete.\n"
-    "\n"
-    "Reply with ONLY one word: YES or NO."
-)
-
-GOODBYE_PROMPT = (
-    "You are {name}. You've been texting in German with a friend and it's time to go. "
-    "Send a natural, casual goodbye message in German — like you actually have somewhere to be. "
-    "Mention something you need to do (class, errands, meeting a friend, etc.).\n"
-    "\n"
-    "Rules:\n"
-    "- Write ONLY the goodbye message in German. Nothing else.\n"
-    "- {level_rules}\n"
-    "- Keep it warm and casual. You're friends.\n"
-    "\n"
-    "Example: \"Okay, ich muss jetzt los! Wir schreiben später, ja? 😊\"\n"
-    "Example: \"Hey, ich muss zum Unterricht. Bis bald! ✌️\""
-)
 
 _WRAP_UP_MIN = 10   # earliest we start checking
 _WRAP_UP_FORCE = 20  # always wrap up at this count

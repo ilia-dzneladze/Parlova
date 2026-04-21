@@ -4,6 +4,7 @@ export type RootStackParamList = {
     ArchiveList: undefined;
     ArchiveChat: { archiveId: string };
     WordList: undefined;
+    CreatePersona: undefined;
 };
 
 export type TabParamList = {

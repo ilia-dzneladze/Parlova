@@ -1,6 +1,7 @@
 import * as SQLite from "expo-sqlite";
 import uuid from "react-native-uuid";
 import { Conversation, ArchivedConversation } from "../types/conversation";
+import { Persona } from "../types/persona";
 import { Quest } from "../types/quest";
 import { DEFAULT_GREETING } from "../utils/chat";
 
@@ -15,15 +16,57 @@ export type ChatMessage = {
 
 let db: SQLite.SQLiteDatabase;
 
+// Penelope's bundled definition — the backend YAML is the canonical source,
+// but this ensures the app works on first launch without a network call.
+const PENELOPE_DEFAULT: Persona = {
+    id: "penelope",
+    name: "Penelope",
+    description:
+        'Pénélope "Penny" Dupont is a 20-year-old French woman originally from Lyon. ' +
+        "She moved to Berlin two years ago for its vibrant art scene and now lives in Neukölln. " +
+        "She shares a cramped, high-ceilinged Altbau apartment with Lukas, a 22-year-old German structural engineering student — " +
+        "they are polar opposites (she is chaotic and spontaneous, he is hyper-organized) but get along surprisingly well over late-night beers. " +
+        "She is in her 2nd year at UdK Berlin, studying Mixed Media and Installation Art; her current project uses found objects from the Berlin U-Bahn. " +
+        'She works 15 hours a week as a barista at "Kaffee Schwarz," a third-wave coffee shop in Kreuzberg. ' +
+        "Hobbies: shooting black-and-white film on her battered Nikon F3, scouring Mauerpark flea market for vintage postcards and weird textured fabrics, " +
+        'curating hyper-specific Spotify playlists (e.g. "Drinking espresso while it rains on a Tuesday"), ' +
+        "and going to underground techno clubs — though she usually stands in the back analyzing the lighting design rather than dancing. " +
+        "She is a massive coffee snob (she considers drip coffee a crime against humanity). " +
+        "She fiercely defends physical media — vinyl, film cameras, printed books — and hates corporate minimalist architecture. " +
+        "She misses Lyon's food and its winding traboules (hidden passageways) but finds Lyon too traditional compared to Berlin. " +
+        "Personality: warm, observant, slightly cynical but deeply passionate. Dry French humor mixed with Berlin directness. " +
+        "She is genuinely curious about new people — she asks questions because she actually wants to know. " +
+        'She sometimes slips in French filler words — "bref", "enfin", "putain" — when she forgets the German word.',
+    level: "A1",
+    questionFreq: 0.7,
+    avatarColor: "#007AFF",
+    source: "global",
+    globalId: "penelope",
+};
+
 export async function initDB(): Promise<void> {
     db = await SQLite.openDatabaseAsync("parlova.db");
+
+    await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS personas (
+            id TEXT PRIMARY KEY NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            level TEXT NOT NULL DEFAULT 'A1',
+            question_freq REAL NOT NULL DEFAULT 0.5,
+            avatar_color TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'user',
+            global_id TEXT
+        );
+    `);
+
     await db.execAsync(`
         CREATE TABLE IF NOT EXISTS conversations (
             id TEXT PRIMARY KEY NOT NULL,
             name TEXT NOT NULL,
             avatar_color TEXT NOT NULL,
             level TEXT NOT NULL DEFAULT 'A1',
-            persona TEXT NOT NULL DEFAULT '',
+            persona_id TEXT NOT NULL DEFAULT '',
             last_message TEXT NOT NULL DEFAULT '',
             timestamp TEXT NOT NULL DEFAULT '',
             unread INTEGER NOT NULL DEFAULT 0
@@ -48,6 +91,7 @@ export async function initDB(): Promise<void> {
             avatar_color TEXT NOT NULL,
             level TEXT NOT NULL DEFAULT 'A1',
             persona TEXT NOT NULL DEFAULT '',
+            question_freq REAL NOT NULL DEFAULT 0.5,
             last_message TEXT NOT NULL DEFAULT '',
             message_count INTEGER NOT NULL DEFAULT 0,
             archived_at INTEGER NOT NULL,
@@ -81,44 +125,102 @@ export async function initDB(): Promise<void> {
         );
     `);
 
-    // Migrate existing tables: add persona column if missing
+    // ── Column migrations (safe to re-run) ──────────────────────────────────
     const addColumnSafe = async (table: string, column: string, def: string) => {
-        try {
-            await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT NOT NULL DEFAULT '${def}'`);
-        } catch {
-            // Column already exists — ignore
-        }
+        try { await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT NOT NULL DEFAULT '${def}'`); }
+        catch { /* already exists */ }
     };
-    await addColumnSafe("conversations", "persona", "");
-    await addColumnSafe("archived_conversations", "persona", "");
-
-    // question_freq: how often this persona asks follow-up questions (0.0–1.0)
     const addRealColumnSafe = async (table: string, column: string, def: number) => {
-        try {
-            await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} REAL NOT NULL DEFAULT ${def}`);
-        } catch {
-            // Column already exists — ignore
-        }
+        try { await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} REAL NOT NULL DEFAULT ${def}`); }
+        catch { /* already exists */ }
     };
-    await addRealColumnSafe("conversations", "question_freq", 0.5);
-    await addRealColumnSafe("archived_conversations", "question_freq", 0.5);
 
-    // quest_json: stores the active quest object (with answers) for each conversation
+    // Conversations: add persona_id (new) and keep old columns for archive compat
+    await addColumnSafe("conversations", "persona_id", "");
     await addColumnSafe("conversations", "quest_json", "");
+    // Legacy columns — still exist in older DBs, kept to avoid migration complexity
+    await addColumnSafe("conversations", "persona", "");
+    await addRealColumnSafe("conversations", "question_freq", 0.5);
 
-    // Persist quest in archives so past missions are reviewable
+    // Archived conversations
+    await addColumnSafe("archived_conversations", "persona", "");
+    await addRealColumnSafe("archived_conversations", "question_freq", 0.5);
     await addColumnSafe("archived_conversations", "quest_json", "");
 
-    // Dictionary cache: headline (direct translation) and root_entry (lemma lookup)
+    // Dictionary cache
     await addColumnSafe("dictionary_cache", "headline", "");
     await addColumnSafe("dictionary_cache", "root_entry", "");
 
-    // Persona migration: always keep Penelope's persona up to date with the latest version
+    // ── Seed global personas ─────────────────────────────────────────────────
     await db.runAsync(
-        "UPDATE conversations SET persona = ?, question_freq = 0.7 WHERE name = 'Penelope'",
-        PENELOPE_PERSONA,
+        `INSERT OR IGNORE INTO personas (id, name, description, level, question_freq, avatar_color, source, global_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        PENELOPE_DEFAULT.id,
+        PENELOPE_DEFAULT.name,
+        PENELOPE_DEFAULT.description,
+        PENELOPE_DEFAULT.level,
+        PENELOPE_DEFAULT.questionFreq,
+        PENELOPE_DEFAULT.avatarColor,
+        PENELOPE_DEFAULT.source,
+        PENELOPE_DEFAULT.globalId ?? null,
+    );
+
+    // Migrate existing Penelope conversations to reference the personas table
+    await db.runAsync(
+        "UPDATE conversations SET persona_id = 'penelope' WHERE name = 'Penelope' AND persona_id = ''",
     );
 }
+
+// ── Persona helpers ──────────────────────────────────────────────────────────
+
+function rowToPersona(row: Record<string, unknown>): Persona {
+    return {
+        id: row.id as string,
+        name: row.name as string,
+        description: row.description as string,
+        level: row.level as string,
+        questionFreq: (row.question_freq as number) ?? 0.5,
+        avatarColor: row.avatar_color as string,
+        source: (row.source as "global" | "user") ?? "user",
+        globalId: (row.global_id as string) || null,
+    };
+}
+
+export async function getPersonas(): Promise<Persona[]> {
+    const rows = await db.getAllAsync(
+        "SELECT * FROM personas ORDER BY source ASC, name ASC",
+    );
+    return (rows as Record<string, unknown>[]).map(rowToPersona);
+}
+
+export async function getPersona(id: string): Promise<Persona | null> {
+    const row = await db.getFirstAsync<Record<string, unknown>>(
+        "SELECT * FROM personas WHERE id = ?", id,
+    );
+    return row ? rowToPersona(row) : null;
+}
+
+export async function upsertPersona(p: Persona): Promise<void> {
+    await db.runAsync(
+        `INSERT OR REPLACE INTO personas (id, name, description, level, question_freq, avatar_color, source, global_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        p.id, p.name, p.description, p.level, p.questionFreq, p.avatarColor, p.source, p.globalId ?? null,
+    );
+}
+
+export async function insertPersona(p: Persona): Promise<void> {
+    await db.runAsync(
+        `INSERT INTO personas (id, name, description, level, question_freq, avatar_color, source, global_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        p.id, p.name, p.description, p.level, p.questionFreq, p.avatarColor, p.source, p.globalId ?? null,
+    );
+}
+
+export async function deletePersona(id: string): Promise<void> {
+    await db.runAsync("DELETE FROM personas WHERE id = ? AND source = 'user'", id);
+}
+
+// ── Conversations ────────────────────────────────────────────────────────────
 
 function rowToConversation(row: Record<string, unknown>): Conversation {
     return {
@@ -126,8 +228,7 @@ function rowToConversation(row: Record<string, unknown>): Conversation {
         name: row.name as string,
         avatarColor: row.avatar_color as string,
         level: row.level as string,
-        persona: (row.persona as string) || "",
-        questionFreq: (row.question_freq as number) ?? 0.5,
+        personaId: (row.persona_id as string) || "",
         lastMessage: row.last_message as string,
         timestamp: row.timestamp as string,
         unread: (row.unread as number) === 1,
@@ -148,14 +249,13 @@ export async function getConversation(id: string): Promise<Conversation | null> 
 
 export async function insertConversation(convo: Conversation): Promise<void> {
     await db.runAsync(
-        `INSERT OR REPLACE INTO conversations (id, name, avatar_color, level, persona, question_freq, last_message, timestamp, unread)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT OR REPLACE INTO conversations (id, name, avatar_color, level, persona_id, last_message, timestamp, unread)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         convo.id,
         convo.name,
         convo.avatarColor,
         convo.level,
-        convo.persona,
-        convo.questionFreq,
+        convo.personaId,
         convo.lastMessage,
         convo.timestamp,
         convo.unread ? 1 : 0,
@@ -177,53 +277,27 @@ export async function markAsUnread(id: string): Promise<void> {
 export async function updateLastMessage(id: string, message: string, timestamp: string): Promise<void> {
     await db.runAsync(
         "UPDATE conversations SET last_message = ?, timestamp = ? WHERE id = ?",
-        message,
-        timestamp,
-        id,
+        message, timestamp, id,
     );
 }
-
-const PENELOPE_PERSONA =
-    "Pénélope \"Penny\" Dupont is a 20-year-old French woman originally from Lyon. " +
-    "She moved to Berlin two years ago for its vibrant art scene and now lives in Neukölln. " +
-    "She shares a cramped, high-ceilinged Altbau apartment with Lukas, a 22-year-old German structural engineering student — " +
-    "they are polar opposites (she is chaotic and spontaneous, he is hyper-organized) but get along surprisingly well over late-night beers. " +
-    "She is in her 2nd year at UdK Berlin, studying Mixed Media and Installation Art; her current project uses found objects from the Berlin U-Bahn. " +
-    "She works 15 hours a week as a barista at \"Kaffee Schwarz,\" a third-wave coffee shop in Kreuzberg. " +
-    "Hobbies: shooting black-and-white film on her battered Nikon F3, scouring Mauerpark flea market for vintage postcards and weird textured fabrics, " +
-    "curating hyper-specific Spotify playlists (e.g. \"Drinking espresso while it rains on a Tuesday\"), " +
-    "and going to underground techno clubs — though she usually stands in the back analyzing the lighting design rather than dancing. " +
-    "She is a massive coffee snob (she considers drip coffee a crime against humanity). " +
-    "She fiercely defends physical media — vinyl, film cameras, printed books — and hates corporate minimalist architecture. " +
-    "She misses Lyon's food and its winding traboules (hidden passageways) but finds Lyon too traditional compared to Berlin. " +
-    "Personality: warm, observant, slightly cynical but deeply passionate. Dry French humor mixed with Berlin directness. " +
-    "She is genuinely curious about new people — she asks questions because she actually wants to know. " +
-    "She sometimes slips in French filler words — \"bref\", \"enfin\", \"putain\" — when she forgets the German word.";
 
 export async function seedIfEmpty(): Promise<void> {
     const result = await db.getFirstAsync<{ count: number }>("SELECT COUNT(*) as count FROM conversations");
     if (result && result.count > 0) return;
 
-    const seeds: Conversation[] = [
-        {
-            id: uuid.v4() as string,
-            name: "Penelope",
-            avatarColor: "#007AFF",
-            level: "A1",
-            persona: PENELOPE_PERSONA,
-            questionFreq: 0.7,
-            lastMessage: DEFAULT_GREETING,
-            timestamp: "10:32",
-            unread: true,
-        },
-    ];
-
-    for (const convo of seeds) {
-        await insertConversation(convo);
-    }
+    await insertConversation({
+        id: uuid.v4() as string,
+        name: PENELOPE_DEFAULT.name,
+        avatarColor: PENELOPE_DEFAULT.avatarColor,
+        level: PENELOPE_DEFAULT.level,
+        personaId: PENELOPE_DEFAULT.id,
+        lastMessage: DEFAULT_GREETING,
+        timestamp: "10:32",
+        unread: true,
+    });
 }
 
-// ---- Messages ----
+// ── Messages ─────────────────────────────────────────────────────────────────
 
 export async function getMessages(conversationId: string): Promise<ChatMessage[]> {
     const rows = await db.getAllAsync(
@@ -247,12 +321,7 @@ export async function saveMessages(conversationId: string, messages: ChatMessage
             await db.runAsync(
                 `INSERT INTO messages (id, conversation_id, sender, content, response_time, timestamp)
                  VALUES (?, ?, ?, ?, ?, ?)`,
-                msg.id,
-                conversationId,
-                msg.sender,
-                msg.content,
-                msg.responseTime ?? null,
-                msg.timestamp,
+                msg.id, conversationId, msg.sender, msg.content, msg.responseTime ?? null, msg.timestamp,
             );
         }
     });
@@ -266,17 +335,12 @@ export async function appendMessage(msg: ChatMessage): Promise<void> {
     await db.runAsync(
         `INSERT OR REPLACE INTO messages (id, conversation_id, sender, content, response_time, timestamp)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        msg.id,
-        msg.conversationId,
-        msg.sender,
-        msg.content,
-        msg.responseTime ?? null,
-        msg.timestamp,
+        msg.id, msg.conversationId, msg.sender, msg.content, msg.responseTime ?? null, msg.timestamp,
     );
     await updateLastMessage(msg.conversationId, msg.content, formatTimestampForList(msg.timestamp));
 }
 
-// ---- Archive ----
+// ── Archive ──────────────────────────────────────────────────────────────────
 
 export async function archiveConversation(conversationId: string): Promise<string | null> {
     const convo = await db.getFirstAsync<Record<string, unknown>>(
@@ -287,8 +351,13 @@ export async function archiveConversation(conversationId: string): Promise<strin
     const msgCount = await db.getFirstAsync<{ count: number }>(
         "SELECT COUNT(*) as count FROM messages WHERE conversation_id = ?", conversationId,
     );
-    // Don't archive if only the default greeting or no messages
     if (!msgCount || msgCount.count <= 1) return null;
+
+    // Snapshot the persona text at archive time so archives remain historically accurate
+    const personaSnap = await db.getFirstAsync<{ description: string; question_freq: number }>(
+        "SELECT description, question_freq FROM personas WHERE id = ?",
+        convo.persona_id as string,
+    );
 
     const archiveId = uuid.v4() as string;
     const lastMsg = await db.getFirstAsync<Record<string, unknown>>(
@@ -297,15 +366,16 @@ export async function archiveConversation(conversationId: string): Promise<strin
 
     await db.withTransactionAsync(async () => {
         await db.runAsync(
-            `INSERT INTO archived_conversations (id, conversation_id, name, avatar_color, level, persona, question_freq, last_message, message_count, archived_at, quest_json)
+            `INSERT INTO archived_conversations
+             (id, conversation_id, name, avatar_color, level, persona, question_freq, last_message, message_count, archived_at, quest_json)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             archiveId,
             conversationId,
             convo.name as string,
             convo.avatar_color as string,
             convo.level as string,
-            (convo.persona as string) || "",
-            (convo.question_freq as number) ?? 0.5,
+            personaSnap?.description ?? "",
+            personaSnap?.question_freq ?? 0.5,
             (lastMsg?.content as string) ?? "",
             msgCount.count,
             Date.now(),
@@ -315,8 +385,7 @@ export async function archiveConversation(conversationId: string): Promise<strin
         await db.runAsync(
             `INSERT INTO archived_messages (id, archive_id, sender, content, response_time, timestamp)
              SELECT id, ?, sender, content, response_time, timestamp FROM messages WHERE conversation_id = ?`,
-            archiveId,
-            conversationId,
+            archiveId, conversationId,
         );
 
         await db.runAsync("DELETE FROM messages WHERE conversation_id = ?", conversationId);
@@ -362,8 +431,7 @@ export async function getArchivedConversation(archiveId: string): Promise<Archiv
 
 export async function getArchivedMessages(archiveId: string): Promise<ChatMessage[]> {
     const rows = await db.getAllAsync(
-        "SELECT * FROM archived_messages WHERE archive_id = ? ORDER BY timestamp ASC",
-        archiveId,
+        "SELECT * FROM archived_messages WHERE archive_id = ? ORDER BY timestamp ASC", archiveId,
     );
     return (rows as Record<string, unknown>[]).map((row) => ({
         id: row.id as string,
@@ -373,21 +441,6 @@ export async function getArchivedMessages(archiveId: string): Promise<ChatMessag
         responseTime: row.response_time as number | undefined,
         timestamp: row.timestamp as number,
     }));
-}
-
-function formatTimestampForList(ts: number): string {
-    const d = new Date(ts);
-    const now = new Date();
-    if (d.toDateString() === now.toDateString()) {
-        const h = d.getHours() % 12 || 12;
-        const m = d.getMinutes().toString().padStart(2, "0");
-        const ap = d.getHours() >= 12 ? "PM" : "AM";
-        return `${h}:${m} ${ap}`;
-    }
-    const diff = Math.floor((now.getTime() - d.getTime()) / 86400000);
-    if (diff === 1) return "Yesterday";
-    if (diff < 7) return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getDay()];
-    return `${d.getMonth()+1}/${d.getDate()}/${d.getFullYear().toString().slice(-2)}`;
 }
 
 export async function deleteArchivedConversation(archiveId: string): Promise<void> {
@@ -401,13 +454,12 @@ export function formatTimestampForArchive(ts: number): string {
     return formatTimestampForList(ts);
 }
 
-// ---- Quest Storage ----
+// ── Quest Storage ────────────────────────────────────────────────────────────
 
 export async function saveQuestForConversation(conversationId: string, quest: Quest): Promise<void> {
     await db.runAsync(
         "UPDATE conversations SET quest_json = ? WHERE id = ?",
-        JSON.stringify(quest),
-        conversationId,
+        JSON.stringify(quest), conversationId,
     );
 }
 
@@ -418,20 +470,16 @@ export function parseQuestJson(json: string | undefined | null): Quest | null {
 
 export async function getQuestForConversation(conversationId: string): Promise<Quest | null> {
     const row = await db.getFirstAsync<{ quest_json: string }>(
-        "SELECT quest_json FROM conversations WHERE id = ?",
-        conversationId,
+        "SELECT quest_json FROM conversations WHERE id = ?", conversationId,
     );
     return parseQuestJson(row?.quest_json);
 }
 
 export async function clearQuestForConversation(conversationId: string): Promise<void> {
-    await db.runAsync(
-        "UPDATE conversations SET quest_json = '' WHERE id = ?",
-        conversationId,
-    );
+    await db.runAsync("UPDATE conversations SET quest_json = '' WHERE id = ?", conversationId);
 }
 
-// ---- Dictionary Cache ----
+// ── Dictionary Cache ─────────────────────────────────────────────────────────
 
 export type DictEntry = {
     word: string;
@@ -440,11 +488,9 @@ export type DictEntry = {
     gender: string | null;
     example: string | null;
     headline: string | null;
-    root: string | null;  // JSON-serialised root DictEntry, or null
+    root: string | null;
 };
 
-// direction: "de" = German→English, "en" = English→German
-// Cache keys for EN→DE entries are prefixed with "en:" to share the same table
 function dictKey(word: string, direction: "de" | "en"): string {
     return direction === "en" ? `en:${word}` : word;
 }
@@ -469,12 +515,7 @@ export async function saveDictEntry(entry: DictEntry, direction: "de" | "en" = "
         `INSERT OR REPLACE INTO dictionary_cache (word, translations, part_of_speech, gender, example, headline, root_entry)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
         dictKey(entry.word, direction),
-        entry.translations,
-        entry.partOfSpeech,
-        entry.gender,
-        entry.example,
-        entry.headline,
-        entry.root,
+        entry.translations, entry.partOfSpeech, entry.gender, entry.example, entry.headline, entry.root,
     );
 }
 
@@ -491,7 +532,7 @@ function rowToDictEntry(row: Record<string, unknown>, direction: "de" | "en" = "
     };
 }
 
-// ---- Dictionary Usage ----
+// ── Dictionary Usage ─────────────────────────────────────────────────────────
 
 function todayString(): string {
     const d = new Date();
@@ -520,9 +561,7 @@ export async function incrementDictionaryUsage(): Promise<number> {
 }
 
 export async function getAllDictEntries(): Promise<DictEntry[]> {
-    const rows = await db.getAllAsync(
-        "SELECT * FROM dictionary_cache ORDER BY word ASC",
-    );
+    const rows = await db.getAllAsync("SELECT * FROM dictionary_cache ORDER BY word ASC");
     return (rows as Record<string, unknown>[]).map((r) => {
         const word = r.word as string;
         const direction = word.startsWith("en:") ? "en" : "de";
@@ -537,4 +576,21 @@ export async function clearDictCache(): Promise<void> {
 export async function resetDictionaryUsageToday(): Promise<void> {
     const today = todayString();
     await db.runAsync("DELETE FROM dictionary_usage WHERE date = ?", today);
+}
+
+// ── Timestamp helpers ─────────────────────────────────────────────────────────
+
+function formatTimestampForList(ts: number): string {
+    const d = new Date(ts);
+    const now = new Date();
+    if (d.toDateString() === now.toDateString()) {
+        const h = d.getHours() % 12 || 12;
+        const m = d.getMinutes().toString().padStart(2, "0");
+        const ap = d.getHours() >= 12 ? "PM" : "AM";
+        return `${h}:${m} ${ap}`;
+    }
+    const diff = Math.floor((now.getTime() - d.getTime()) / 86400000);
+    if (diff === 1) return "Yesterday";
+    if (diff < 7) return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()];
+    return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear().toString().slice(-2)}`;
 }

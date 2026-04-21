@@ -3,8 +3,7 @@ export interface Conversation {
     name: string;
     avatarColor: string;
     level: string;
-    persona: string;
-    questionFreq: number;
+    personaId: string;
     lastMessage: string;
     timestamp: string;
     unread: boolean;

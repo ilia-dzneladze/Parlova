@@ -10,7 +10,8 @@ from pydantic import BaseModel
 from .app import main_loop
 from .llm_properties import Persona, Level
 from .quests import generate_quest, quest_from_dict, Quest
-from fastapi import FastAPI, HTTPException
+import yaml
+from fastapi import FastAPI, Header, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 
@@ -25,6 +26,8 @@ app.add_middleware(
 )
 
 PONS_API_KEY = os.getenv("PONS_API_KEY", "")
+PERSONAS_API_KEY = os.getenv("PERSONAS_API_KEY", "")
+_PERSONAS_DIR = Path(__file__).parent / "prompts" / "personas"
 
 # ── Local kaikki dictionary DB ───────────────────────────────────────────────
 _DICT_DB_PATH = Path(__file__).parent.parent / "dictionary" / "parlova_dict.db"
@@ -174,6 +177,26 @@ async def quest_generate(request: QuestGenerateRequest):
     return quest.to_dict(request.persona_name)
 
 
+@app.get("/api/personas")
+async def get_personas(x_api_key: str = Header(default="")):
+    if PERSONAS_API_KEY and x_api_key != PERSONAS_API_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    result = []
+    for f in sorted(_PERSONAS_DIR.glob("*.yaml")):
+        data = yaml.safe_load(f.read_text(encoding="utf-8"))
+        result.append({
+            "id": data["id"],
+            "name": data["name"],
+            "description": data["description"].strip(),
+            "level": data["level"],
+            "questionFreq": data["question_freq"],
+            "avatarColor": data["avatar_color"],
+            "source": "global",
+            "globalId": data["id"],
+        })
+    return result
+
+
 @app.get("/api/dictionary/{word}")
 async def dictionary_lookup(word: str, direction: str = "de"):
     """
@@ -287,6 +310,19 @@ _ABBREVIATIONS = {
 _ABBR_PATTERN = re.compile(
     r"\b(" + "|".join(re.escape(k) for k in _ABBREVIATIONS) + r")\b"
 )
+
+
+# ── DEBUG — remove when done ─────────────────────────────────────────────────
+import shutil
+
+@app.post("/debug/upload-db")
+async def debug_upload_db(file: UploadFile = File(...)):
+    out = Path(__file__).parent.parent / "parlova_debug.db"
+    with open(out, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    print(f"\n✅  DB saved to {out}\n")
+    return {"status": "ok", "saved_to": str(out)}
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 def _clean_pons(text: str) -> str:

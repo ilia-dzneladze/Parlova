@@ -29,6 +29,7 @@ import HomeScreen from "@/components/HomeScreen";
 import MeScreen from "@/components/MeScreen";
 import SettingsScreen from "@/components/SettingsScreen";
 import WordList from "@/components/WordList";
+import CreatePersona from "@/components/CreatePersona";
 import { COLORS } from "./constants/theme";
 
 const Stack = createNativeStackNavigator();
@@ -115,6 +116,7 @@ export default function App() {
           <Stack.Screen name="ArchiveList" component={ArchiveList} options={{ headerShown: false }} />
           <Stack.Screen name="ArchiveChat" component={ArchiveChat} options={{ headerShown: false }} />
           <Stack.Screen name="WordList" component={WordList} options={{ headerShown: false }} />
+          <Stack.Screen name="CreatePersona" component={CreatePersona} options={{ headerShown: false }} />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>
