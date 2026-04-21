@@ -158,7 +158,8 @@ def send_message(question, history=[], persona: Persona | None = None, message_c
     early_goodbye = bool(_GOODBYE_PATTERNS.search(response_text))  # type: ignore
     if user_goodbye or early_goodbye or _should_check_conclusion(message_count):
         force = message_count >= _WRAP_UP_FORCE
-        concluded = _check_conclusion(full_messages, agent.model)
+        # User saying goodbye is a hard signal — skip the LLM check
+        concluded = user_goodbye or _check_conclusion(full_messages, agent.model)
         if concluded or force:
             # Don't append a second goodbye if the response already contains one
             goodbye = "" if early_goodbye else _generate_goodbye(full_messages, persona, agent.model)
