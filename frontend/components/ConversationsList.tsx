@@ -32,11 +32,15 @@ const ConversationRow = React.memo(({
     isLast,
     onArchive,
     onDelete,
+    onSwipeStart,
+    onSwipeEnd,
 }: {
     item: Conversation;
     isLast: boolean;
     onArchive: RowAction;
     onDelete: RowAction;
+    onSwipeStart: () => void;
+    onSwipeEnd: () => void;
 }) => {
     const navigation = useNavigation<NavigationProp<RootStackParamList>>();
     const translateX = useRef(new Animated.Value(0)).current;
@@ -44,36 +48,75 @@ const ConversationRow = React.memo(({
 
     const snapClose = useCallback(() => {
         Animated.spring(translateX, {
-            toValue: 0, useNativeDriver: true, damping: 20, stiffness: 250,
+            toValue: 0, useNativeDriver: true, damping: 26, stiffness: 320, mass: 0.8,
         }).start();
         isOpenRef.current = false;
     }, [translateX]);
 
     const snapOpen = useCallback(() => {
         Animated.spring(translateX, {
-            toValue: -REVEAL, useNativeDriver: true, damping: 20, stiffness: 250,
+            toValue: -REVEAL, useNativeDriver: true, damping: 26, stiffness: 320, mass: 0.8,
         }).start();
         isOpenRef.current = true;
     }, [translateX]);
 
+    // tan(30°) ≈ 0.577 → horizontal wins when |dx| > |dy| / 0.577  ≈ |dy| * 1.732
+    const HORIZONTAL_RATIO = 1.732;
+    const MIN_MOVE = 8;
+
     const panResponder = useRef(
         PanResponder.create({
-            onMoveShouldSetPanResponder: (_, g) =>
-                Math.abs(g.dx) > 6 && Math.abs(g.dx) > Math.abs(g.dy),
+            onMoveShouldSetPanResponder: (_, g) => {
+                const absDx = Math.abs(g.dx);
+                const absDy = Math.abs(g.dy);
+                if (isOpenRef.current) {
+                    // When open, claim any meaningful gesture so we can close on vertical or right-swipe
+                    return absDx > MIN_MOVE || absDy > MIN_MOVE;
+                }
+                // When closed, only claim a left-swipe within 30° of horizontal
+                return g.dx < -MIN_MOVE && absDx > absDy * HORIZONTAL_RATIO;
+            },
+            onMoveShouldSetPanResponderCapture: (_, g) => {
+                const absDx = Math.abs(g.dx);
+                const absDy = Math.abs(g.dy);
+                if (isOpenRef.current) {
+                    return absDx > MIN_MOVE || absDy > MIN_MOVE;
+                }
+                return g.dx < -MIN_MOVE && absDx > absDy * HORIZONTAL_RATIO;
+            },
+            onPanResponderTerminationRequest: () => false,
             onPanResponderGrant: () => {
                 translateX.stopAnimation();
+                onSwipeStart();
             },
             onPanResponderMove: (_, g) => {
-                const base = isOpenRef.current ? -REVEAL : 0;
-                const next = Math.max(-REVEAL, Math.min(0, base + g.dx));
-                translateX.setValue(next);
+                if (isOpenRef.current) {
+                    // Vertical motion → keep row still; we'll close on release
+                    if (Math.abs(g.dy) > Math.abs(g.dx)) return;
+                    const next = Math.max(-REVEAL, Math.min(0, -REVEAL + g.dx));
+                    translateX.setValue(next);
+                } else {
+                    const next = Math.max(-REVEAL, Math.min(0, g.dx));
+                    translateX.setValue(next);
+                }
             },
             onPanResponderRelease: (_, g) => {
                 if (isOpenRef.current) {
-                    g.dx > SWIPE_THRESHOLD ? snapClose() : snapOpen();
+                    // Any vertical dominance or rightward swipe → close fully
+                    if (Math.abs(g.dy) > Math.abs(g.dx) || g.dx > SWIPE_THRESHOLD) {
+                        snapClose();
+                    } else {
+                        snapOpen();
+                    }
                 } else {
                     g.dx < -SWIPE_THRESHOLD ? snapOpen() : snapClose();
                 }
+                onSwipeEnd();
+            },
+            onPanResponderTerminate: () => {
+                if (isOpenRef.current) snapOpen();
+                else snapClose();
+                onSwipeEnd();
             },
         })
     ).current;
@@ -130,7 +173,7 @@ const ConversationRow = React.memo(({
                     </View>
 
                     {/* Text content */}
-                    <View style={[styles.textCol, !isLast && styles.separator]}>
+                    <View style={styles.textCol}>
                         <View style={styles.topRow}>
                             <View style={styles.nameRow}>
                                 <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
@@ -142,6 +185,8 @@ const ConversationRow = React.memo(({
                         </View>
                         <Text style={styles.preview} numberOfLines={1}>{item.lastMessage}</Text>
                     </View>
+                    <View style={[styles.separator, styles.separatorTop]} />
+                    <View style={[styles.separator, styles.separatorBottom]} />
                 </TouchableOpacity>
             </Animated.View>
         </View>
@@ -166,6 +211,10 @@ const ConversationsList = () => {
     const navigation = useNavigation<NavigationProp<RootStackParamList>>();
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [loading, setLoading] = useState(true);
+    const [scrollEnabled, setScrollEnabled] = useState(true);
+
+    const handleSwipeStart = useCallback(() => setScrollEnabled(false), []);
+    const handleSwipeEnd = useCallback(() => setScrollEnabled(true), []);
 
     const refresh = useCallback(() => {
         getConversations().then(setConversations);
@@ -227,16 +276,10 @@ const ConversationsList = () => {
 
             {/* Header */}
             <View style={styles.header}>
-                <TouchableOpacity onPress={() => {}} /* TODO: edit action */>
-                    <Text style={styles.editBtn}>Edit</Text>
+                <TouchableOpacity onPress={() => navigation.navigate("ArchiveList")}>
+                        <Ionicons name="archive-outline" size={22} color={COLORS.primary} />
                 </TouchableOpacity>
                 <View style={styles.headerRight}>
-                    <TouchableOpacity onPress={() => navigation.navigate("ArchiveList")}>
-                        <Ionicons name="archive-outline" size={22} color={COLORS.primary} />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => navigation.navigate("CreatePersona")}>
-                        <Ionicons name="person-add-outline" size={22} color={COLORS.primary} />
-                    </TouchableOpacity>
                     <TouchableOpacity onPress={() => navigation.navigate("NewConversation")}>
                         <Ionicons name="create-outline" size={24} color={COLORS.primary} />
                     </TouchableOpacity>
@@ -264,8 +307,11 @@ const ConversationsList = () => {
                         isLast={index === conversations.length - 1}
                         onArchive={handleArchive}
                         onDelete={handleDelete}
+                        onSwipeStart={handleSwipeStart}
+                        onSwipeEnd={handleSwipeEnd}
                     />
                 )}
+                scrollEnabled={scrollEnabled}
                 style={styles.list}
             />
         </SafeAreaView>
@@ -360,7 +406,7 @@ const styles = StyleSheet.create({
         alignItems: "center",
         paddingRight: SPACING[4],
         paddingVertical: SPACING[3],
-        minHeight: 88,
+        minHeight: 80,
         backgroundColor: COLORS.surface,
     },
 
@@ -372,7 +418,7 @@ const styles = StyleSheet.create({
 
     /* Avatar */
     avatar: {
-        width: 60, height: 60, borderRadius: 30,
+        width: 50, height: 50, borderRadius: 30,
         alignItems: "center", justifyContent: "center",
     },
     avatarText: {
@@ -384,8 +430,14 @@ const styles = StyleSheet.create({
         flex: 1, paddingLeft: SPACING[3], paddingVertical: SPACING[2], justifyContent: "center",
     },
     separator: {
-        borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border,
+        position: "absolute",
+        left: 20 + 50 + SPACING[3],
+        right: -SPACING[4],
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: COLORS.borderInput,
     },
+    separatorTop: { top: 0 },
+    separatorBottom: { bottom: 0 },
     topRow: {
         flexDirection: "row", justifyContent: "space-between",
         alignItems: "baseline", marginBottom: 4,

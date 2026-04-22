@@ -57,9 +57,10 @@ export default function NewConversation() {
     const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null);
     const [isAddingNew, setIsAddingNew] = useState(false);
 
+    const [userScenarios, setUserScenarios] = useState<string[]>([]);
     const [scenario, setScenario] = useState("Just Chatting");
     const [customScenario, setCustomScenario] = useState("");
-    const [isCustom, setIsCustom] = useState(false);
+    const [isAddingScenario, setIsAddingScenario] = useState(false);
 
     // New persona fields
     const [newName, setNewName] = useState("");
@@ -82,19 +83,33 @@ export default function NewConversation() {
         }).start();
     }, [isAddingNew]);
 
-    const activeScenario = isCustom ? customScenario.trim() : scenario;
+    const activeScenario = scenario;
     const newPersonaReady = isAddingNew && newName.trim().length > 0 && newDescription.trim().length > 0;
     const existingPersonaReady = !isAddingNew && selectedPersonaId !== null;
     const canStart = activeScenario.length > 0 && (newPersonaReady || existingPersonaReady);
 
     function selectPreset(preset: string) {
         setScenario(preset);
-        setIsCustom(false);
     }
 
-    function selectCustom() {
-        setIsCustom(true);
-        setScenario("");
+    function toggleAddScenario() {
+        if (isAddingScenario) {
+            setIsAddingScenario(false);
+            setCustomScenario("");
+        } else {
+            setIsAddingScenario(true);
+        }
+    }
+
+    function saveCustomScenario() {
+        const trimmed = customScenario.trim();
+        if (!trimmed) return;
+        if (!userScenarios.includes(trimmed) && !SCENARIO_PRESETS.includes(trimmed)) {
+            setUserScenarios((prev) => [...prev, trimmed]);
+        }
+        setScenario(trimmed);
+        setCustomScenario("");
+        setIsAddingScenario(false);
     }
 
     function toggleAddNew() {
@@ -110,6 +125,29 @@ export default function NewConversation() {
     function selectExistingPersona(id: string) {
         setSelectedPersonaId(id);
         setIsAddingNew(false);
+    }
+
+    async function saveNewPersona() {
+        if (!newPersonaReady) return;
+        const persona: Persona = {
+            id: uuid.v4() as string,
+            name: newName.trim(),
+            description: newDescription.trim(),
+            level: newLevel,
+            questionFreq: newQuestionFreq,
+            avatarColor: newAvatarColor,
+            source: "user",
+            globalId: null,
+        };
+        await insertPersona(persona);
+        setPersonas((prev) => [...prev, persona]);
+        setSelectedPersonaId(persona.id);
+        setIsAddingNew(false);
+        setNewName("");
+        setNewDescription("");
+        setNewLevel("A1");
+        setNewAvatarColor(AVATAR_COLORS[0]);
+        setNewQuestionFreq(0.55);
     }
 
     async function handleStart() {
@@ -178,38 +216,60 @@ export default function NewConversation() {
                     </Text>
 
                     <View style={styles.chipsWrap}>
-                        {SCENARIO_PRESETS.map((preset) => (
+                        {[...SCENARIO_PRESETS, ...userScenarios].map((preset) => (
                             <TouchableOpacity
                                 key={preset}
-                                style={[styles.chip, !isCustom && scenario === preset && styles.chipActive]}
+                                style={[styles.chip, scenario === preset && styles.chipActive]}
                                 onPress={() => selectPreset(preset)}
                                 activeOpacity={0.75}
                             >
-                                <Text style={[styles.chipText, !isCustom && scenario === preset && styles.chipTextActive]}>
-                                    {preset}
+                                <Text style={[styles.chipText, scenario === preset && styles.chipTextActive]} numberOfLines={1}>
+                                    {preset.length > 32 ? preset.slice(0, 32) + "…" : preset}
                                 </Text>
                             </TouchableOpacity>
                         ))}
-                        <TouchableOpacity
-                            style={[styles.chip, isCustom && styles.chipActive]}
-                            onPress={selectCustom}
-                            activeOpacity={0.75}
-                        >
-                            <Text style={[styles.chipText, isCustom && styles.chipTextActive]}>Custom…</Text>
-                        </TouchableOpacity>
                     </View>
 
-                    {isCustom && (
-                        <TextInput
-                            style={[styles.input, styles.textArea, { marginTop: SPACING[2] }]}
-                            placeholder={"e.g. You are a grumpy landlord showing an apartment. It's raining outside and you want to leave early."}
-                            placeholderTextColor={COLORS.inkSubtle}
-                            value={customScenario}
-                            onChangeText={setCustomScenario}
-                            multiline
-                            textAlignVertical="top"
-                            autoFocus
+                    <TouchableOpacity
+                        style={[styles.addNewCard, isAddingScenario && styles.addNewCardActive, { marginTop: SPACING[3] }]}
+                        onPress={toggleAddScenario}
+                        activeOpacity={0.75}
+                    >
+                        <Ionicons
+                            name={isAddingScenario ? "remove-circle-outline" : "add-circle-outline"}
+                            size={22}
+                            color={isAddingScenario ? COLORS.inkMuted : COLORS.primary}
                         />
+                        <Text style={[styles.addNewText, isAddingScenario && styles.addNewTextActive]}>
+                            {isAddingScenario ? "Cancel" : "Add New"}
+                        </Text>
+                    </TouchableOpacity>
+
+                    {isAddingScenario && (
+                        <View style={styles.newPersonaForm}>
+                            <Text style={styles.fieldLabel}>Scenario</Text>
+                            <Text style={styles.fieldHint}>
+                                Describe the context. The character will stay in it naturally.
+                            </Text>
+                            <TextInput
+                                style={[styles.input, styles.textArea]}
+                                placeholder={"e.g. You are a grumpy landlord showing an apartment. It's raining outside and you want to leave early."}
+                                placeholderTextColor={COLORS.inkSubtle}
+                                value={customScenario}
+                                onChangeText={setCustomScenario}
+                                multiline
+                                textAlignVertical="top"
+                                autoFocus
+                            />
+                            <TouchableOpacity
+                                style={[styles.saveScenarioBtn, customScenario.trim().length === 0 && styles.saveScenarioBtnDisabled]}
+                                onPress={saveCustomScenario}
+                                disabled={customScenario.trim().length === 0}
+                                activeOpacity={0.85}
+                            >
+                                <Text style={styles.saveScenarioBtnText}>Save Scenario</Text>
+                            </TouchableOpacity>
+                        </View>
                     )}
 
                     {/* ── Character ── */}
@@ -343,6 +403,15 @@ export default function NewConversation() {
                                         </TouchableOpacity>
                                     ))}
                                 </View>
+
+                                <TouchableOpacity
+                                    style={[styles.saveScenarioBtn, !newPersonaReady && styles.saveScenarioBtnDisabled]}
+                                    onPress={saveNewPersona}
+                                    disabled={!newPersonaReady}
+                                    activeOpacity={0.85}
+                                >
+                                    <Text style={styles.saveScenarioBtnText}>Save Character</Text>
+                                </TouchableOpacity>
                             </View>
                         )}
                     </Animated.View>
@@ -582,6 +651,20 @@ const styles = StyleSheet.create({
     freqLabelActive: { color: COLORS.primary },
     freqSub: { fontFamily: FONTS.sans, fontSize: 11, color: COLORS.inkSubtle, textAlign: "center" },
     freqSubActive: { color: COLORS.primaryDark },
+
+    saveScenarioBtn: {
+        marginTop: SPACING[3],
+        backgroundColor: COLORS.primary,
+        borderRadius: RADIUS.md,
+        paddingVertical: SPACING[2] + 4,
+        alignItems: "center",
+    },
+    saveScenarioBtnDisabled: { opacity: 0.4 },
+    saveScenarioBtnText: {
+        fontFamily: FONTS.sansSemi,
+        fontSize: SIZES.sm,
+        color: COLORS.white,
+    },
 
     footer: {
         paddingHorizontal: SPACING[4],

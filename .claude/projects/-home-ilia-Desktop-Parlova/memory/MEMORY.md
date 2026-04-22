@@ -1,1 +1,0 @@
-- [Don't assume visual causes](feedback_no_overlay_fix.md) — think layout/sizing before opacity when something isn't visible
