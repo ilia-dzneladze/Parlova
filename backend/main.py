@@ -140,12 +140,12 @@ async def chat(request: MessageRequest):
             question_freq=p.question_freq,
             scenario=p.scenario,
         )
-    response_text, follow_up, wrap_up, elapsed = main_loop(
+    bubbles, closing, wrap_up, elapsed = main_loop(
         request.message, request.history, persona, request.message_count,
     )
     return {
-        "response": response_text,
-        "follow_up": follow_up,
+        "bubbles": bubbles,
+        "closing": closing,
         "wrap_up": wrap_up,
         "time": elapsed,
     }

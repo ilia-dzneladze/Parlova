@@ -1,8 +1,22 @@
 import random
 import re
 import time
-from ..llm_properties import groq_client, Persona, Level, create_texter, LEVEL_RULES
+from ..llm_properties import groq_client, Persona, create_texter
 from ..prompts import CONCLUSION_CHECK_PROMPT, GOODBYE_PROMPT
+
+
+_MAX_BUBBLES = 4
+
+
+def _split_bubbles(text: str) -> list[str]:
+    parts = [p.strip() for p in text.split("|||")]
+    bubbles = [p for p in parts if p]
+    if len(bubbles) <= 1 and bubbles:
+        sentences = re.split(r"(?<=[.!?…])\s+", bubbles[0])
+        sentences = [s.strip() for s in sentences if s.strip()]
+        if len(sentences) > 1:
+            bubbles = sentences
+    return bubbles[:_MAX_BUBBLES]
 
 
 _OFF_TOPIC_MARKERS = re.compile(
@@ -71,8 +85,7 @@ def _check_conclusion(chat_messages: list[dict], model: str) -> bool:
 
 
 def _generate_goodbye(chat_messages: list[dict], persona: Persona, model: str) -> str:
-    level_rules = LEVEL_RULES.get(persona.level, LEVEL_RULES[Level.A1])
-    goodbye_system = GOODBYE_PROMPT.format(name=persona.name, level_rules=level_rules)
+    goodbye_system = GOODBYE_PROMPT.format(name=persona.name)
     goodbye_messages = chat_messages + [
         {"role": "system", "content": goodbye_system},
     ]
@@ -117,7 +130,11 @@ def send_message(question, history=[], persona: Persona | None = None, message_c
     response_text = response.choices[0].message.content
 
     if _looks_off_topic(response_text):  # type: ignore
-        return JAILBREAK_WARNING, "", False, time.time() - start
+        return [JAILBREAK_WARNING], "", False, time.time() - start
+
+    bubbles = _split_bubbles(response_text or "")
+    if not bubbles:
+        bubbles = [response_text or ""]
 
     full_messages = chat_messages + [{"role": "assistant", "content": response_text}]
     user_goodbye = bool(_GOODBYE_PATTERNS.search(question))
@@ -129,6 +146,6 @@ def send_message(question, history=[], persona: Persona | None = None, message_c
             goodbye = "" if early_goodbye else _generate_goodbye(full_messages, persona, agent.model)
             if goodbye and _looks_off_topic(goodbye):  # type: ignore
                 goodbye = "Okay, ich muss jetzt los! Bis bald! 😊"
-            return response_text, goodbye, True, time.time() - start
+            return bubbles, goodbye, True, time.time() - start
 
-    return response_text, "", False, time.time() - start
+    return bubbles, "", False, time.time() - start

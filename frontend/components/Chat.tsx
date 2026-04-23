@@ -335,30 +335,47 @@ const Chat = () => {
                     minDelay,
                 ]);
                 const data = await response.json();
-                const aiMsg: Message = {
-                    id: uuid.v4() as string,
-                    sender: "ai",
-                    content: data.response,
-                    responseTime: data.time,
-                    timestamp: Date.now(),
+                const rawBubbles: string[] = Array.isArray(data.bubbles) ? data.bubbles : [];
+                const bubbles = rawBubbles.map((b) => String(b).trim()).filter(Boolean);
+                const closing: string = typeof data.closing === "string" ? data.closing.trim() : "";
+
+                const bubbleDelay = (text: string) => {
+                    const chars = text.length;
+                    return Math.min(2200, 400 + chars * 45 + Math.random() * 250);
                 };
 
                 if (mountedRef.current) {
-                    setIsTyping(false);
-                    setMessages((prev) => [...prev, aiMsg]);
+                    for (let i = 0; i < bubbles.length; i++) {
+                        if (!mountedRef.current) break;
+                        if (i === 0) {
+                            setIsTyping(false);
+                        } else {
+                            setIsTyping(true);
+                            await new Promise((r) => setTimeout(r, bubbleDelay(bubbles[i])));
+                            if (!mountedRef.current) break;
+                            setIsTyping(false);
+                        }
+                        const msg: Message = {
+                            id: uuid.v4() as string,
+                            sender: "ai",
+                            content: bubbles[i],
+                            responseTime: i === 0 ? data.time : undefined,
+                            timestamp: Date.now(),
+                        };
+                        setMessages((prev) => [...prev, msg]);
+                    }
 
-                    if (data.follow_up) {
+                    if (closing && mountedRef.current) {
                         setIsTyping(true);
-                        await new Promise(r => setTimeout(r, 800 + Math.random() * 700));
+                        await new Promise((r) => setTimeout(r, bubbleDelay(closing)));
                         if (mountedRef.current) {
-                            const followUpMsg: Message = {
+                            setIsTyping(false);
+                            setMessages((prev) => [...prev, {
                                 id: uuid.v4() as string,
                                 sender: "ai",
-                                content: data.follow_up,
+                                content: closing,
                                 timestamp: Date.now(),
-                            };
-                            setIsTyping(false);
-                            setMessages((prev) => [...prev, followUpMsg]);
+                            }]);
                         }
                     }
 
@@ -381,13 +398,22 @@ const Chat = () => {
                         }
                     }
                 } else {
-                    await appendMessage({ ...aiMsg, conversationId });
-                    if (data.follow_up) {
+                    for (let i = 0; i < bubbles.length; i++) {
                         await appendMessage({
                             id: uuid.v4() as string,
                             conversationId,
                             sender: "ai",
-                            content: data.follow_up,
+                            content: bubbles[i],
+                            responseTime: i === 0 ? data.time : undefined,
+                            timestamp: Date.now(),
+                        });
+                    }
+                    if (closing) {
+                        await appendMessage({
+                            id: uuid.v4() as string,
+                            conversationId,
+                            sender: "ai",
+                            content: closing,
                             timestamp: Date.now(),
                         });
                     }
