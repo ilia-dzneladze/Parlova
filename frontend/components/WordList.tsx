@@ -1,33 +1,62 @@
 import React, { useCallback, useState } from "react";
-import { FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
-import { getAllDictEntries, DictEntry } from "../src/db/database";
+import {
+    getAllDictEntries,
+    getAllSavedSentences,
+    deleteSavedSentence,
+    DictEntry,
+    SavedSentence,
+} from "../src/db/database";
 import { COLORS, FONTS, RADIUS, SIZES, SPACING } from "../constants/theme";
+
+type Tab = "words" | "sentences";
 
 const WordList = () => {
     const navigator = useNavigation();
+    const [tab, setTab] = useState<Tab>("words");
     const [entries, setEntries] = useState<DictEntry[]>([]);
+    const [sentences, setSentences] = useState<SavedSentence[]>([]);
     const [expanded, setExpanded] = useState<string | null>(null);
+
+    const reload = useCallback(() => {
+        getAllDictEntries().then(setEntries);
+        getAllSavedSentences().then(setSentences);
+    }, []);
 
     useFocusEffect(
         useCallback(() => {
-            getAllDictEntries().then(setEntries);
-        }, [])
+            reload();
+        }, [reload])
     );
 
-    const toggle = (word: string) => {
-        setExpanded(prev => prev === word ? null : word);
+    const toggle = (key: string) => {
+        setExpanded(prev => prev === key ? null : key);
     };
 
-    const renderItem = ({ item }: { item: DictEntry }) => {
-        const isOpen = expanded === item.word;
+    const handleDeleteSentence = (id: string) => {
+        Alert.alert("Delete sentence", "Remove this saved translation?", [
+            { text: "Cancel", style: "cancel" },
+            {
+                text: "Delete",
+                style: "destructive",
+                onPress: async () => {
+                    await deleteSavedSentence(id);
+                    reload();
+                },
+            },
+        ]);
+    };
+
+    const renderWord = ({ item }: { item: DictEntry }) => {
+        const isOpen = expanded === `w:${item.word}`;
         const translations: string[] = JSON.parse(item.translations);
         return (
             <TouchableOpacity
-                style={[styles.row, isOpen && styles.rowExpanded]}
-                onPress={() => toggle(item.word)}
+                style={styles.row}
+                onPress={() => toggle(`w:${item.word}`)}
                 activeOpacity={0.6}
             >
                 <View style={styles.rowHeader}>
@@ -65,27 +94,101 @@ const WordList = () => {
         );
     };
 
+    const renderSentence = ({ item }: { item: SavedSentence }) => {
+        const isOpen = expanded === `s:${item.id}`;
+        return (
+            <TouchableOpacity
+                style={styles.row}
+                onPress={() => toggle(`s:${item.id}`)}
+                onLongPress={() => handleDeleteSentence(item.id)}
+                activeOpacity={0.6}
+            >
+                <View style={styles.rowHeader}>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.sentenceSource} numberOfLines={isOpen ? undefined : 2}>
+                            {item.sourceText}
+                        </Text>
+                        {!isOpen && (
+                            <Text style={styles.preview} numberOfLines={1}>
+                                {item.translation}
+                            </Text>
+                        )}
+                    </View>
+                    <Ionicons name={isOpen ? "chevron-up" : "chevron-down"} size={18} color={COLORS.inkSubtle} />
+                </View>
+                {isOpen && (
+                    <View style={styles.detail}>
+                        <Text style={styles.exampleLabel}>
+                            {item.sourceLang.toUpperCase()} → {item.targetLang.toUpperCase()}
+                        </Text>
+                        <Text style={styles.transText}>{item.translation}</Text>
+                    </View>
+                )}
+            </TouchableOpacity>
+        );
+    };
+
+    const showWords = tab === "words";
+    const list = showWords ? entries : sentences;
+    const isEmpty = list.length === 0;
+
     return (
         <SafeAreaView style={styles.safe} edges={["top"]}>
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigator.goBack()} style={styles.backBtn}>
                     <Ionicons name="chevron-back" size={28} color={COLORS.primary} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>My words</Text>
+                <Text style={styles.headerTitle}>My library</Text>
                 <View style={{ width: 36 }} />
             </View>
 
-            {entries.length === 0 ? (
+            <View style={styles.tabBar}>
+                <TouchableOpacity
+                    style={[styles.tab, showWords && styles.tabActive]}
+                    onPress={() => { setTab("words"); setExpanded(null); }}
+                >
+                    <Text style={[styles.tabText, showWords && styles.tabTextActive]}>
+                        Words ({entries.length})
+                    </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.tab, !showWords && styles.tabActive]}
+                    onPress={() => { setTab("sentences"); setExpanded(null); }}
+                >
+                    <Text style={[styles.tabText, !showWords && styles.tabTextActive]}>
+                        Sentences ({sentences.length})
+                    </Text>
+                </TouchableOpacity>
+            </View>
+
+            {isEmpty ? (
                 <View style={styles.empty}>
-                    <Ionicons name="book-outline" size={48} color={COLORS.inkSubtle} />
-                    <Text style={styles.emptyText}>No words yet</Text>
-                    <Text style={styles.emptyHint}>Words you look up in chat will appear here.</Text>
+                    <Ionicons
+                        name={showWords ? "book-outline" : "chatbox-ellipses-outline"}
+                        size={48}
+                        color={COLORS.inkSubtle}
+                    />
+                    <Text style={styles.emptyText}>
+                        {showWords ? "No words yet" : "No sentences yet"}
+                    </Text>
+                    <Text style={styles.emptyHint}>
+                        {showWords
+                            ? "Words you tap in chat will appear here."
+                            : "Saved sentence translations will appear here."}
+                    </Text>
                 </View>
-            ) : (
+            ) : showWords ? (
                 <FlatList
                     data={entries}
                     keyExtractor={(item) => item.word}
-                    renderItem={renderItem}
+                    renderItem={renderWord}
+                    contentContainerStyle={styles.list}
+                />
+            ) : (
+                <FlatList
+                    data={sentences}
+                    keyExtractor={(item) => item.id}
+                    renderItem={renderSentence}
                     contentContainerStyle={styles.list}
                 />
             )}
@@ -113,6 +216,26 @@ const styles = StyleSheet.create({
         fontSize: 17,
         color: COLORS.ink,
     },
+    tabBar: {
+        flexDirection: "row",
+        backgroundColor: COLORS.primaryPale,
+        borderRadius: RADIUS.md,
+        padding: 3,
+        marginHorizontal: SPACING[4],
+        marginTop: SPACING[3],
+        marginBottom: SPACING[1],
+    },
+    tab: { flex: 1, paddingVertical: 9, borderRadius: RADIUS.md, alignItems: "center" },
+    tabActive: {
+        backgroundColor: COLORS.surface,
+        shadowColor: COLORS.ink,
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+        elevation: 2,
+    },
+    tabText: { fontFamily: FONTS.sansMedium, fontSize: 14, color: COLORS.inkMuted },
+    tabTextActive: { color: COLORS.ink },
     list: { padding: SPACING[4], paddingBottom: SPACING[10] },
     row: {
         backgroundColor: COLORS.surface,
@@ -122,7 +245,6 @@ const styles = StyleSheet.create({
         marginBottom: SPACING[2],
         padding: SPACING[4],
     },
-    rowExpanded: { backgroundColor: COLORS.surface },
     rowHeader: {
         flexDirection: "row",
         alignItems: "center",
@@ -132,6 +254,12 @@ const styles = StyleSheet.create({
         fontFamily: FONTS.displaySemi,
         fontSize: SIZES.lg,
         color: COLORS.ink,
+    },
+    sentenceSource: {
+        fontFamily: FONTS.sansMedium,
+        fontSize: SIZES.base,
+        color: COLORS.ink,
+        lineHeight: 22,
     },
     preview: {
         fontFamily: FONTS.sans,

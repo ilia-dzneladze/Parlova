@@ -1,17 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
-    ActivityIndicator,
     Alert,
     Animated,
-    Dimensions,
     Easing,
-    Keyboard,
     KeyboardAvoidingView,
-    Modal,
-    PanResponder,
     Platform,
-    Pressable,
     ScrollView,
     StatusBar,
     StyleSheet,
@@ -23,13 +17,14 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, useRoute, NavigationProp, RouteProp } from "@react-navigation/native";
 import uuid from "react-native-uuid";
-import { getMessages, saveMessages, appendMessage, archiveConversation, deleteConversation, markAsRead, markAsUnread, getConversation, getPersona, ChatMessage, getDictionaryUsage, incrementDictionaryUsage, searchDictCache, saveDictEntry, DictEntry } from "../src/db/database";
+import { getMessages, saveMessages, appendMessage, archiveConversation, deleteConversation, markAsRead, markAsUnread, getConversation, getPersona, ChatMessage } from "../src/db/database";
 import { Conversation } from "../src/types/conversation";
 import { Persona } from "../src/types/persona";
 import { RootStackParamList } from "../src/types/navigation";
 import { Message, SENT_COLOR, RECV_COLOR, DEFAULT_GREETING, formatTime, isLastInGroup, isFirstInGroup, showTimestamp } from "../src/utils/chat";
 import { COLORS, FONTS } from "../constants/theme";
 import { API_BASE } from "../constants/api";
+import LookupSheet from "./LookupSheet";
 
 const KEYBOARD_OFFSET = -30;
 
@@ -83,162 +78,8 @@ const Chat = () => {
     const [message, setMessage] = useState<string>("");
     const [isTyping, setIsTyping] = useState(false);
     const [tappedId, setTappedId] = useState<string | null>(null);
-
-    // Dictionary state
-    const DAILY_LIMIT = 5;
-    const [dictVisible, setDictVisible] = useState(false);
-    const [dictWord, setDictWord] = useState("");
-    const [dictResults, setDictResults] = useState<DictEntry[]>([]);
-    const [dictSelected, setDictSelected] = useState<DictEntry | null>(null);
-    const [dictNotFound, setDictNotFound] = useState(false);
-    const [dictDirection, setDictDirection] = useState<"de" | "en">("de");
-    const [dictError, setDictError] = useState<string | null>(null);
-    const [dictLoading, setDictLoading] = useState(false);
-    const [dictCount, setDictCount] = useState(0);
-
-    useEffect(() => {
-        getDictionaryUsage().then(setDictCount);
-    }, []);
-
-    const handleDictSearch = useCallback(async (text: string, dir?: "de" | "en") => {
-        setDictWord(text);
-        setDictSelected(null);
-        setDictNotFound(false);
-        setDictError(null);
-        const trimmed = text.trim().toLowerCase();
-        if (!trimmed) {
-            setDictResults([]);
-            return;
-        }
-        const direction = dir ?? dictDirection;
-        const results = await searchDictCache(trimmed, direction);
-        setDictResults(results);
-        if (results.length === 0 || !results.some(r => r.word === trimmed)) {
-            setDictNotFound(true);
-        } else {
-            setDictNotFound(false);
-        }
-    }, [dictDirection]);
-
-    const handleSelectCached = useCallback((entry: DictEntry) => {
-        setDictSelected(entry);
-        setDictNotFound(false);
-        setDictError(null);
-    }, []);
-
-    const handleAddWord = useCallback(async () => {
-        const trimmed = dictWord.trim().toLowerCase();
-        if (!trimmed || dictCount >= DAILY_LIMIT) return;
-
-        setDictLoading(true);
-        setDictError(null);
-
-        try {
-            const resp = await fetch(
-                `${API_BASE}/api/dictionary/${encodeURIComponent(trimmed)}?direction=${dictDirection}`,
-                { headers: { "ngrok-skip-browser-warning": "true" } },
-            );
-            if (resp.status === 404) {
-                setDictError("Word not found in PONS. Try another spelling.");
-            } else if (!resp.ok) {
-                setDictError("Lookup failed. Try again later.");
-            } else {
-                const data = await resp.json();
-                const entry: DictEntry = {
-                    word: data.word,
-                    translations: JSON.stringify(data.translations),
-                    partOfSpeech: data.partOfSpeech,
-                    gender: data.gender,
-                    example: data.example,
-                    headline: data.headline ?? null,
-                    root: data.root ? JSON.stringify(data.root) : null,
-                };
-                await saveDictEntry(entry, dictDirection);
-                if (data.root) {
-                    await saveDictEntry({
-                        word: data.root.word,
-                        translations: JSON.stringify(data.root.translations),
-                        partOfSpeech: data.root.partOfSpeech,
-                        gender: data.root.gender,
-                        example: data.root.example,
-                        headline: data.root.headline ?? null,
-                        root: null,
-                    }, "de");
-                }
-                setDictSelected(entry);
-                setDictNotFound(false);
-                const results = await searchDictCache(trimmed, dictDirection);
-                setDictResults(results);
-                const newCount = await incrementDictionaryUsage();
-                setDictCount(newCount);
-            }
-        } catch {
-            setDictError("Network error. Check your connection.");
-        } finally {
-            setDictLoading(false);
-        }
-    }, [dictWord, dictCount, dictDirection]);
-
-    const SCREEN_HEIGHT = Dimensions.get("window").height;
-    const SHEET_HEIGHT = SCREEN_HEIGHT * 0.5;
-    const sheetAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
-
-    const openDictionary = useCallback((prefill?: string) => {
-        setDictSelected(null);
-        setDictNotFound(false);
-        setDictError(null);
-        if (prefill) {
-            setDictDirection("de");
-            const word = prefill.trim().toLowerCase();
-            setDictWord(word);
-            searchDictCache(word, "de").then((results) => {
-                setDictResults(results);
-                setDictNotFound(!results.some(r => r.word === word));
-            });
-        } else {
-            setDictWord("");
-            setDictResults([]);
-        }
-        setDictVisible(true);
-        Animated.spring(sheetAnim, {
-            toValue: 0,
-            useNativeDriver: true,
-            damping: 20,
-            stiffness: 200,
-        }).start();
-    }, []);
-
-    const closeDictionary = useCallback(() => {
-        Keyboard.dismiss();
-        Animated.timing(sheetAnim, {
-            toValue: SHEET_HEIGHT,
-            duration: 250,
-            useNativeDriver: true,
-            easing: Easing.in(Easing.ease),
-        }).start(() => setDictVisible(false));
-    }, []);
-
-    const panResponder = useRef(
-        PanResponder.create({
-            onStartShouldSetPanResponder: () => true,
-            onMoveShouldSetPanResponder: (_, g) => g.dy > 5,
-            onPanResponderMove: (_, g) => {
-                if (g.dy > 0) sheetAnim.setValue(g.dy);
-            },
-            onPanResponderRelease: (_, g) => {
-                if (g.dy > 80 || g.vy > 0.5) {
-                    closeDictionary();
-                } else {
-                    Animated.spring(sheetAnim, {
-                        toValue: 0,
-                        useNativeDriver: true,
-                        damping: 20,
-                        stiffness: 200,
-                    }).start();
-                }
-            },
-        })
-    ).current;
+    const [lookupText, setLookupText] = useState<string | null>(null);
+    const [searchVisible, setSearchVisible] = useState(false);
 
     useEffect(() => {
         mountedRef.current = true;
@@ -508,6 +349,8 @@ const Chat = () => {
                                 <TouchableOpacity
                                     activeOpacity={0.8}
                                     onPress={() => setTappedId(prev => prev === msg.id ? null : msg.id)}
+                                    onLongPress={() => setLookupText(msg.content)}
+                                    delayLongPress={350}
                                     style={[
                                         styles.messageRow,
                                         isUser ? styles.rowUser : styles.rowAI,
@@ -521,27 +364,9 @@ const Chat = () => {
                                             last && isUser && { borderBottomRightRadius: 4 },
                                             last && !isUser && { borderBottomLeftRadius: 4 },
                                         ]}>
-                                            {!isUser ? (
-                                                <Text style={[styles.bubbleText, styles.textRecv]}>
-                                                    {msg.content.split(/(\s+)/).map((part, j) => {
-                                                        if (/^\s+$/.test(part)) return part;
-                                                        const clean = part.replace(/[^a-zA-ZäöüÄÖÜß-]/g, "");
-                                                        return (
-                                                            <Text
-                                                                key={j}
-                                                                onLongPress={clean.length > 1 ? () => openDictionary(clean) : undefined}
-                                                                style={styles.textRecv}
-                                                            >
-                                                                {part}
-                                                            </Text>
-                                                        );
-                                                    })}
-                                                </Text>
-                                            ) : (
-                                                <Text style={[styles.bubbleText, styles.textSent]}>
-                                                    {msg.content}
-                                                </Text>
-                                            )}
+                                            <Text style={[styles.bubbleText, isUser ? styles.textSent : styles.textRecv]}>
+                                                {msg.content}
+                                            </Text>
                                         </View>
                                     </View>
 
@@ -559,8 +384,8 @@ const Chat = () => {
 
                 {/* Input Bar */}
                 <View style={styles.inputBar}>
-                    <TouchableOpacity onPress={() => openDictionary()} style={styles.dictBtn}>
-                        <Ionicons name="book-outline" size={24} color={dictCount >= DAILY_LIMIT ? COLORS.inkSubtle : COLORS.primary} />
+                    <TouchableOpacity onPress={() => setSearchVisible(true)} style={styles.dictBtn}>
+                        <Ionicons name="book-outline" size={24} color={COLORS.primary} />
                     </TouchableOpacity>
                     <View style={styles.inputPill}>
                         <TextInput
@@ -583,190 +408,17 @@ const Chat = () => {
                         <Ionicons name="arrow-up" size={22} color={COLORS.white} />
                     </TouchableOpacity>
                 </View>
-
-                {/* Dictionary Modal */}
-                <Modal visible={dictVisible} animationType="fade" transparent>
-                    <KeyboardAvoidingView
-                        style={styles.modalOverlay}
-                        behavior={Platform.OS === "ios" ? "padding" : "height"}
-                    >
-                        <Pressable style={styles.modalDismissArea} onPress={closeDictionary} />
-                        <Animated.View style={[
-                            styles.modalSheet,
-                            { transform: [{ translateY: sheetAnim }], height: SHEET_HEIGHT },
-                        ]}>
-                            <View {...panResponder.panHandlers} style={styles.modalHandleArea}>
-                                <View style={styles.modalHandle} />
-                            </View>
-
-                            <ScrollView
-                                keyboardShouldPersistTaps="handled"
-                                bounces={false}
-                                style={{ flex: 1 }}
-                                contentContainerStyle={{ paddingBottom: 40 }}
-                            >
-                                <View style={styles.modalHeader}>
-                                    <Text style={styles.modalTitle}>Dictionary</Text>
-                                    <TouchableOpacity onPress={closeDictionary}>
-                                        <Ionicons name="close-circle-outline" size={28} color={COLORS.inkMuted} />
-                                    </TouchableOpacity>
-                                </View>
-
-                                <View style={styles.dictToggleRow}>
-                                    <TouchableOpacity
-                                        style={[styles.dictToggleBtn, dictDirection === "de" && styles.dictToggleActive]}
-                                        onPress={() => {
-                                            setDictDirection("de");
-                                            setDictWord(""); setDictResults([]); setDictSelected(null);
-                                            setDictNotFound(false); setDictError(null);
-                                        }}
-                                    >
-                                        <Text style={[styles.dictToggleText, dictDirection === "de" && styles.dictToggleTextActive]}>DE → EN</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        style={[styles.dictToggleBtn, dictDirection === "en" && styles.dictToggleActive]}
-                                        onPress={() => {
-                                            setDictDirection("en");
-                                            setDictWord(""); setDictResults([]); setDictSelected(null);
-                                            setDictNotFound(false); setDictError(null);
-                                        }}
-                                    >
-                                        <Text style={[styles.dictToggleText, dictDirection === "en" && styles.dictToggleTextActive]}>EN → DE</Text>
-                                    </TouchableOpacity>
-                                </View>
-
-                                <Text style={styles.dictCounter}>
-                                    {dictCount >= DAILY_LIMIT
-                                        ? "Daily limit reached. Come back tomorrow!"
-                                        : `${dictCount} / ${DAILY_LIMIT} lookups used today`}
-                                </Text>
-
-                                <View style={styles.dictInputPill}>
-                                    <Ionicons name="search" size={16} color={COLORS.inkMuted} style={{ marginRight: 8 }} />
-                                    <TextInput
-                                        placeholder={dictDirection === "de" ? "Search German words..." : "Search English words..."}
-                                        placeholderTextColor={COLORS.inkSubtle}
-                                        value={dictWord}
-                                        onChangeText={handleDictSearch}
-                                        autoCapitalize="none"
-                                        autoCorrect={false}
-                                        style={[styles.dictInput, { flex: 1 }]}
-                                    />
-                                </View>
-
-                                {dictError && <Text style={styles.dictError}>{dictError}</Text>}
-
-                                {dictSelected && (() => {
-                                    const translations: string[] = JSON.parse(dictSelected.translations);
-                                    const root = dictSelected.root ? JSON.parse(dictSelected.root) : null;
-                                    const rootTranslations: string[] | null = root ? (root.translations as string[]) : null;
-                                    return (
-                                        <>
-                                            <View style={styles.dictResultCard}>
-                                                <View style={styles.dictResultHeader}>
-                                                    <View style={styles.dictResultWordRow}>
-                                                        <Text style={styles.dictResultWord}>{dictSelected.word}</Text>
-                                                        {dictSelected.headline && (
-                                                            <Text style={styles.dictResultHeadline}> — {dictSelected.headline}</Text>
-                                                        )}
-                                                    </View>
-                                                    {(dictSelected.partOfSpeech || dictSelected.gender) && (
-                                                        <Text style={styles.dictResultMeta}>
-                                                            {[dictSelected.partOfSpeech, dictSelected.gender].filter(Boolean).join(" · ")}
-                                                        </Text>
-                                                    )}
-                                                </View>
-                                                <View style={styles.dictTranslations}>
-                                                    {translations.map((t, i) => (
-                                                        <View key={i} style={styles.dictTransRow}>
-                                                            <Text style={styles.dictBullet}>•</Text>
-                                                            <Text style={styles.dictTransText}>{t}</Text>
-                                                        </View>
-                                                    ))}
-                                                </View>
-                                                {dictSelected.example && (
-                                                    <View style={styles.dictExampleBox}>
-                                                        <Text style={styles.dictExampleLabel}>Example</Text>
-                                                        <Text style={styles.dictExampleText}>{dictSelected.example}</Text>
-                                                    </View>
-                                                )}
-                                            </View>
-                                            {root && rootTranslations && (
-                                                <View style={[styles.dictResultCard, styles.dictRootCard]}>
-                                                    <View style={styles.dictResultHeader}>
-                                                        <Text style={styles.dictRootLabel}>Root form</Text>
-                                                        <View style={styles.dictResultWordRow}>
-                                                            <Text style={styles.dictResultWord}>{root.word}</Text>
-                                                            {root.headline && (
-                                                                <Text style={styles.dictResultHeadline}> — {root.headline}</Text>
-                                                            )}
-                                                        </View>
-                                                        {(root.partOfSpeech || root.gender) && (
-                                                            <Text style={styles.dictResultMeta}>
-                                                                {[root.partOfSpeech, root.gender].filter(Boolean).join(" · ")}
-                                                            </Text>
-                                                        )}
-                                                    </View>
-                                                    <View style={styles.dictTranslations}>
-                                                        {rootTranslations.slice(0, 3).map((t: string, i: number) => (
-                                                            <View key={i} style={styles.dictTransRow}>
-                                                                <Text style={styles.dictBullet}>•</Text>
-                                                                <Text style={styles.dictTransText}>{t}</Text>
-                                                            </View>
-                                                        ))}
-                                                    </View>
-                                                    {root.example && (
-                                                        <View style={styles.dictExampleBox}>
-                                                            <Text style={styles.dictExampleLabel}>Example</Text>
-                                                            <Text style={styles.dictExampleText}>{root.example}</Text>
-                                                        </View>
-                                                    )}
-                                                </View>
-                                            )}
-                                        </>
-                                    );
-                                })()}
-
-                                {!dictSelected && dictWord.trim().length > 0 && (
-                                    <View style={styles.dictListContainer}>
-                                        {dictResults.map((entry) => (
-                                            <TouchableOpacity
-                                                key={entry.word}
-                                                style={styles.dictListRow}
-                                                onPress={() => handleSelectCached(entry)}
-                                            >
-                                                <Text style={styles.dictListWord}>{entry.word}</Text>
-                                                <Text style={styles.dictListPreview} numberOfLines={1}>
-                                                    {JSON.parse(entry.translations).slice(0, 2).join(", ")}
-                                                </Text>
-                                            </TouchableOpacity>
-                                        ))}
-
-                                        {dictNotFound && dictCount < DAILY_LIMIT && (
-                                            <TouchableOpacity
-                                                style={styles.dictAddRow}
-                                                onPress={handleAddWord}
-                                                disabled={dictLoading}
-                                            >
-                                                {dictLoading ? (
-                                                    <ActivityIndicator size="small" color={COLORS.primary} />
-                                                ) : (
-                                                    <>
-                                                        <Ionicons name="add-circle-outline" size={22} color={COLORS.primary} />
-                                                        <Text style={styles.dictAddText}>
-                                                            Look up "{dictWord.trim().toLowerCase()}"
-                                                        </Text>
-                                                    </>
-                                                )}
-                                            </TouchableOpacity>
-                                        )}
-                                    </View>
-                                )}
-                            </ScrollView>
-                        </Animated.View>
-                    </KeyboardAvoidingView>
-                </Modal>
             </SafeAreaView>
+
+            <LookupSheet
+                visible={lookupText !== null || searchVisible}
+                initialText={lookupText ?? undefined}
+                initialLang="de"
+                onClose={() => {
+                    setLookupText(null);
+                    setSearchVisible(false);
+                }}
+            />
         </KeyboardAvoidingView>
     );
 };
@@ -834,70 +486,4 @@ const styles = StyleSheet.create({
     sendActive: { backgroundColor: SENT_COLOR },
     sendInactive: { backgroundColor: COLORS.inkSubtle },
     dictBtn: { width: 32, height: 32, alignItems: "center", justifyContent: "center", marginBottom: 2 },
-
-    modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end" },
-    modalDismissArea: { flex: 1 },
-    modalSheet: { backgroundColor: COLORS.surface, borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingHorizontal: 20 },
-    modalHandleArea: { paddingTop: 8, paddingBottom: 4, alignItems: "center" },
-    modalHandle: { width: 36, height: 5, borderRadius: 3, backgroundColor: COLORS.border },
-    modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 },
-    modalTitle: { fontFamily: FONTS.displayBold, fontSize: 20, color: COLORS.ink, letterSpacing: -0.3 },
-
-    dictToggleRow: {
-        flexDirection: "row", backgroundColor: COLORS.primaryPale,
-        borderRadius: 10, padding: 2, marginBottom: 12,
-    },
-    dictToggleBtn: { flex: 1, paddingVertical: 7, borderRadius: 8, alignItems: "center" },
-    dictToggleActive: {
-        backgroundColor: COLORS.surface, shadowColor: COLORS.ink,
-        shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 2,
-    },
-    dictToggleText: { fontFamily: FONTS.sansMedium, fontSize: 14, color: COLORS.inkMuted },
-    dictToggleTextActive: { color: COLORS.ink },
-
-    dictCounter: { fontFamily: FONTS.sans, fontSize: 13, color: COLORS.inkMuted, marginBottom: 14 },
-
-    dictInputPill: {
-        flexDirection: "row", alignItems: "center", borderRadius: 12,
-        backgroundColor: COLORS.primaryPale, paddingHorizontal: 12, marginBottom: 12,
-    },
-    dictInput: { fontFamily: FONTS.sans, fontSize: 16, color: COLORS.ink, height: 40 },
-
-    dictListContainer: {
-        backgroundColor: COLORS.surface, borderRadius: 12, overflow: "hidden",
-        borderWidth: StyleSheet.hairlineWidth, borderColor: COLORS.border,
-    },
-    dictListRow: {
-        flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-        paddingVertical: 12, paddingHorizontal: 16,
-        borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border,
-    },
-    dictListWord: { fontFamily: FONTS.sansMedium, fontSize: 17, color: COLORS.ink },
-    dictListPreview: { fontSize: 15, color: COLORS.inkMuted, flex: 1, textAlign: "right", marginLeft: 12 },
-    dictAddRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, paddingHorizontal: 16 },
-    dictAddText: { fontFamily: FONTS.sansSemi, fontSize: 16, color: COLORS.primary },
-
-    dictError: { fontSize: 15, color: COLORS.error, textAlign: "center", marginTop: 8 },
-
-    dictResultCard: { backgroundColor: COLORS.primaryPale, borderRadius: 12, padding: 16 },
-    dictResultHeader: { marginBottom: 10 },
-    dictResultWordRow: { flexDirection: "row", alignItems: "baseline", flexWrap: "wrap" },
-    dictResultWord: { fontFamily: FONTS.displayBold, fontSize: 22, color: COLORS.ink, letterSpacing: -0.3 },
-    dictResultHeadline: { fontFamily: FONTS.displaySemi, fontSize: 18, color: COLORS.primary, letterSpacing: -0.2 },
-    dictResultMeta: { fontSize: 14, color: COLORS.inkMuted, marginTop: 2 },
-    dictRootCard: { marginTop: 10, backgroundColor: COLORS.bg },
-    dictRootLabel: {
-        fontFamily: FONTS.sansMedium, fontSize: 11, color: COLORS.inkMuted,
-        textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2,
-    },
-    dictTranslations: { marginBottom: 10 },
-    dictTransRow: { flexDirection: "row", gap: 6, marginBottom: 3 },
-    dictBullet: { fontSize: 16, color: COLORS.primary, lineHeight: 22 },
-    dictTransText: { fontSize: 16, color: COLORS.ink, lineHeight: 22, flex: 1 },
-    dictExampleBox: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: COLORS.border, paddingTop: 10 },
-    dictExampleLabel: {
-        fontSize: 12, fontWeight: "600", color: COLORS.inkMuted,
-        textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4,
-    },
-    dictExampleText: { fontSize: 15, color: COLORS.ink, fontStyle: "italic", lineHeight: 20 },
 });

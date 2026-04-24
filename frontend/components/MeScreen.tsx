@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, NavigationProp } from "@react-navigation/native";
 import { RootStackParamList } from "../src/types/navigation";
-import { clearDictCache, resetDictionaryUsageToday } from "../src/db/database";
+import { clearDictCache } from "../src/db/database";
 import { COLORS, FONTS, RADIUS, SIZES, SPACING } from "../constants/theme";
 
 const MeScreen = () => {
@@ -22,24 +22,6 @@ const MeScreen = () => {
                     onPress: async () => {
                         await clearDictCache();
                         Alert.alert("Done", "Dictionary cleared.");
-                    },
-                },
-            ],
-        );
-    };
-
-    const handleResetUsage = () => {
-        Alert.alert(
-            "Reset daily lookups",
-            "This will reset today's lookup count back to 0.",
-            [
-                { text: "Cancel", style: "cancel" },
-                {
-                    text: "Reset",
-                    style: "destructive",
-                    onPress: async () => {
-                        await resetDictionaryUsageToday();
-                        Alert.alert("Done", "Daily lookups reset.");
                     },
                 },
             ],
@@ -73,16 +55,6 @@ const MeScreen = () => {
 
                 <Text style={styles.sectionHeader}>DATA</Text>
                 <View style={styles.group}>
-                    <TouchableOpacity
-                        style={[styles.row, styles.rowBorder]}
-                        onPress={handleResetUsage}
-                        activeOpacity={0.5}
-                    >
-                        <View style={styles.rowLeft}>
-                            <Ionicons name="refresh-outline" size={22} color={COLORS.primary} />
-                            <Text style={styles.rowLabel}>Reset daily lookups</Text>
-                        </View>
-                    </TouchableOpacity>
                     <TouchableOpacity
                         style={styles.row}
                         onPress={handleClearWords}

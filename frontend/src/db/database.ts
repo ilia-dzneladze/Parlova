@@ -117,11 +117,17 @@ export async function initDB(): Promise<void> {
         );
     `);
     await db.execAsync(`
-        CREATE TABLE IF NOT EXISTS dictionary_usage (
-            date TEXT PRIMARY KEY NOT NULL,
-            count INTEGER NOT NULL DEFAULT 0
+        CREATE TABLE IF NOT EXISTS saved_sentences (
+            id TEXT PRIMARY KEY NOT NULL,
+            source_text TEXT NOT NULL,
+            translation TEXT NOT NULL,
+            source_lang TEXT NOT NULL,
+            target_lang TEXT NOT NULL,
+            saved_at INTEGER NOT NULL,
+            UNIQUE(source_text, source_lang, target_lang)
         );
     `);
+    await db.execAsync("DROP TABLE IF EXISTS dictionary_usage;");
 
     // ── Column migrations (safe to re-run) ──────────────────────────────────
     const addColumnSafe = async (table: string, column: string, def: string) => {
@@ -503,34 +509,6 @@ function rowToDictEntry(row: Record<string, unknown>, direction: "de" | "en" = "
     };
 }
 
-// ── Dictionary Usage ─────────────────────────────────────────────────────────
-
-function todayString(): string {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-export async function getDictionaryUsage(): Promise<number> {
-    const today = todayString();
-    const row = await db.getFirstAsync<{ count: number }>(
-        "SELECT count FROM dictionary_usage WHERE date = ?", today,
-    );
-    return row?.count ?? 0;
-}
-
-export async function incrementDictionaryUsage(): Promise<number> {
-    const today = todayString();
-    await db.runAsync(
-        `INSERT INTO dictionary_usage (date, count) VALUES (?, 1)
-         ON CONFLICT(date) DO UPDATE SET count = count + 1`,
-        today,
-    );
-    const row = await db.getFirstAsync<{ count: number }>(
-        "SELECT count FROM dictionary_usage WHERE date = ?", today,
-    );
-    return row?.count ?? 1;
-}
-
 export async function getAllDictEntries(): Promise<DictEntry[]> {
     const rows = await db.getAllAsync("SELECT * FROM dictionary_cache ORDER BY word ASC");
     return (rows as Record<string, unknown>[]).map((r) => {
@@ -544,9 +522,67 @@ export async function clearDictCache(): Promise<void> {
     await db.runAsync("DELETE FROM dictionary_cache");
 }
 
-export async function resetDictionaryUsageToday(): Promise<void> {
-    const today = todayString();
-    await db.runAsync("DELETE FROM dictionary_usage WHERE date = ?", today);
+// ── Saved Sentences ──────────────────────────────────────────────────────────
+
+export type SavedSentence = {
+    id: string;
+    sourceText: string;
+    translation: string;
+    sourceLang: "de" | "en";
+    targetLang: "de" | "en";
+    savedAt: number;
+};
+
+export function normalizeSentence(text: string): string {
+    return text.trim().replace(/\s+/g, " ");
+}
+
+export async function saveSentence(
+    sourceText: string,
+    translation: string,
+    sourceLang: "de" | "en",
+    targetLang: "de" | "en",
+): Promise<void> {
+    const normalized = normalizeSentence(sourceText);
+    const id = `${sourceLang}:${targetLang}:${normalized}`;
+    await db.runAsync(
+        `INSERT OR IGNORE INTO saved_sentences
+         (id, source_text, translation, source_lang, target_lang, saved_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        id, normalized, translation, sourceLang, targetLang, Date.now(),
+    );
+}
+
+export async function isSentenceSaved(
+    sourceText: string,
+    sourceLang: "de" | "en",
+    targetLang: "de" | "en",
+): Promise<boolean> {
+    const normalized = normalizeSentence(sourceText);
+    const row = await db.getFirstAsync<{ id: string }>(
+        `SELECT id FROM saved_sentences
+         WHERE source_text = ? AND source_lang = ? AND target_lang = ?`,
+        normalized, sourceLang, targetLang,
+    );
+    return !!row;
+}
+
+export async function getAllSavedSentences(): Promise<SavedSentence[]> {
+    const rows = await db.getAllAsync(
+        "SELECT * FROM saved_sentences ORDER BY saved_at DESC",
+    );
+    return (rows as Record<string, unknown>[]).map((r) => ({
+        id: r.id as string,
+        sourceText: r.source_text as string,
+        translation: r.translation as string,
+        sourceLang: r.source_lang as "de" | "en",
+        targetLang: r.target_lang as "de" | "en",
+        savedAt: r.saved_at as number,
+    }));
+}
+
+export async function deleteSavedSentence(id: string): Promise<void> {
+    await db.runAsync("DELETE FROM saved_sentences WHERE id = ?", id);
 }
 
 // ── Timestamp helpers ─────────────────────────────────────────────────────────

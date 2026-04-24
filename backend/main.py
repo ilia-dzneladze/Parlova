@@ -9,10 +9,10 @@ from typing import Optional
 from pydantic import BaseModel
 from .app import main_loop
 from .llm_properties import Persona, Level, DEFAULT_SCENARIO
+from .translate import SUPPORTED_LANGUAGES, translate_text
 import yaml
 from fastapi import FastAPI, Header, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-import httpx
 
 app = FastAPI()
 
@@ -24,7 +24,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-PONS_API_KEY = os.getenv("PONS_API_KEY", "")
 PERSONAS_API_KEY = os.getenv("PERSONAS_API_KEY", "")
 _PERSONAS_DIR = Path(__file__).parent / "prompts" / "personas"
 
@@ -151,6 +150,30 @@ async def chat(request: MessageRequest):
     }
 
 
+class TranslateRequest(BaseModel):
+    text: str
+    source: str = "de"
+    target: str = "en"
+
+
+@app.post("/api/translate")
+async def translate_endpoint(request: TranslateRequest):
+    source = request.source.lower()
+    target = request.target.lower()
+    if source not in SUPPORTED_LANGUAGES or target not in SUPPORTED_LANGUAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only {sorted(SUPPORTED_LANGUAGES)} supported; got {source}->{target}",
+        )
+    if not request.text.strip():
+        raise HTTPException(status_code=400, detail="text is required")
+    try:
+        translated = await asyncio.to_thread(translate_text, request.text, source, target)  # type: ignore[arg-type]
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Translation failed: {e}")
+    return {"translated": translated, "source": source, "target": target}
+
+
 @app.get("/api/personas")
 async def get_personas(x_api_key: str = Header(default="")):
     if PERSONAS_API_KEY and x_api_key != PERSONAS_API_KEY:
@@ -171,110 +194,37 @@ async def get_personas(x_api_key: str = Header(default="")):
     return result
 
 
-@app.get("/api/dictionary/{word}")
-async def dictionary_lookup(word: str, direction: str = "de"):
-    result = await asyncio.to_thread(_kaikki_lookup, word, direction)
-    if result:
-        return result
+@app.get("/api/lookup/{word}")
+async def lookup_word(word: str, direction: str = "de"):
+    if direction not in ("de", "en"):
+        raise HTTPException(status_code=400, detail="direction must be 'de' or 'en'")
+    cleaned = word.strip().lower()
+    if not cleaned:
+        raise HTTPException(status_code=400, detail="word is required")
 
-    if not PONS_API_KEY:
-        raise HTTPException(status_code=404, detail="Word not found")
+    dict_entry = await asyncio.to_thread(_kaikki_lookup, cleaned, direction)
+    if dict_entry:
+        return {**dict_entry, "source": "dict"}
 
-    lang_pair = "deen" if direction == "de" else "ende"
+    src: str = direction
+    tgt: str = "en" if direction == "de" else "de"
     try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                "https://api.pons.com/v1/dictionary",
-                params={"l": lang_pair, "q": word},
-                headers={"X-Secret": PONS_API_KEY},
-                timeout=10.0,
-            )
-    except httpx.RequestError:
-        raise HTTPException(status_code=502, detail="Could not reach PONS API")
-
-    if resp.status_code == 404:
+        translated = await asyncio.to_thread(translate_text, cleaned, src, tgt)  # type: ignore[arg-type]
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Translation failed: {e}")
+    if not translated:
         raise HTTPException(status_code=404, detail="Word not found")
-    if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"PONS API error: {resp.status_code}")
 
-    data = resp.json()
-    pons: dict = {
-        "word": word,
-        "translations": [],
+    return {
+        "word": cleaned,
+        "translations": [translated],
         "partOfSpeech": None,
         "gender": None,
         "example": None,
+        "headline": None,
+        "root": None,
+        "source": "translate",
     }
-
-    try:
-        hits = data[0]["hits"] if data else []
-        for hit in hits:
-            if hit.get("type") != "entry":
-                continue
-            roms = hit.get("roms", [])
-            if not roms:
-                continue
-            rom = roms[0]
-
-            hw_full = rom.get("headword_full", "")
-            if not pons["partOfSpeech"]:
-                for pos in ["SUBST", "V", "ADJ", "ADV", "PREP", "KONJ", "PRON", "ART"]:
-                    if f">{pos}</acronym>" in hw_full or f">{pos}<" in hw_full:
-                        pons["partOfSpeech"] = pos
-                        break
-            if not pons["gender"]:
-                gender_match = re.search(r'class="genus".*?>(m|f|nt)<', hw_full)
-                if gender_match:
-                    g = gender_match.group(1)
-                    pons["gender"] = {"m": "masculine", "f": "feminine", "nt": "neuter"}[g]
-
-            for arab in rom.get("arabs", []):
-                for translation in arab.get("translations", []):
-                    source_raw = translation.get("source", "")
-                    target = _clean_pons(translation.get("target", ""))
-                    if not target:
-                        continue
-                    is_headword = 'class="headword"' in source_raw
-                    source = _clean_pons(source_raw)
-                    if is_headword:
-                        if target not in pons["translations"]:
-                            pons["translations"].append(target)
-                    elif not pons["example"]:
-                        pons["example"] = f"{source} — {target}"
-
-            if pons["translations"]:
-                break
-    except (IndexError, KeyError, TypeError):
-        pass
-
-    if not pons["translations"]:
-        raise HTTPException(status_code=404, detail="No translations found")
-
-    pons["headline"] = _extract_headline(pons["translations"])
-    pons["root"] = None
-    return pons
-
-
-_ABBREVIATIONS = {
-    "etw": "etwas",
-    "jdm": "jemandem",
-    "jdn": "jemanden",
-    "jds": "jemandes",
-    "sb": "somebody",
-    "sb's": "somebody's",
-    "sth": "something",
-    "ugs": "informal",
-    "Dat": "dative",
-    "Akk": "accusative",
-    "Pl": "plural",
-    "o.": "or",
-    "Am": "American English",
-    "Brit": "British English",
-}
-
-_ABBR_PATTERN = re.compile(
-    r"\b(" + "|".join(re.escape(k) for k in _ABBREVIATIONS) + r")\b"
-)
 
 
 # ── DEBUG — remove when done ─────────────────────────────────────────────────
@@ -288,12 +238,3 @@ async def debug_upload_db(file: UploadFile = File(...)):
     print(f"\n✅  DB saved to {out}\n")
     return {"status": "ok", "saved_to": str(out)}
 # ─────────────────────────────────────────────────────────────────────────────
-
-
-def _clean_pons(text: str) -> str:
-    import html
-    text = re.sub(r"<[^>]+>", "", text)
-    text = html.unescape(text)
-    text = _ABBR_PATTERN.sub(lambda m: _ABBREVIATIONS[m.group(0)], text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text

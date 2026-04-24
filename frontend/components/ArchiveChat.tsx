@@ -8,6 +8,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import LookupSheet from "./LookupSheet";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, useRoute, NavigationProp, RouteProp } from "@react-navigation/native";
 import { getArchivedMessages, getArchivedConversation } from "../src/db/database";
@@ -23,6 +24,7 @@ const ArchiveChat = () => {
 
     const [messages, setMessages] = useState<Message[]>([]);
     const [archive, setArchive] = useState<ArchivedConversation | null>(null);
+    const [lookupText, setLookupText] = useState<string | null>(null);
 
     useEffect(() => {
         (async () => {
@@ -66,11 +68,16 @@ const ArchiveChat = () => {
                                     {formatTime(msg.timestamp)}
                                 </Text>
                             )}
-                            <View style={[
-                                styles.messageRow,
-                                isUser ? styles.rowUser : styles.rowAI,
-                                { marginTop: first || tsVisible ? 8 : 2 },
-                            ]}>
+                            <TouchableOpacity
+                                activeOpacity={0.8}
+                                onLongPress={() => setLookupText(msg.content)}
+                                delayLongPress={350}
+                                style={[
+                                    styles.messageRow,
+                                    isUser ? styles.rowUser : styles.rowAI,
+                                    { marginTop: first || tsVisible ? 8 : 2 },
+                                ]}
+                            >
                                 <View style={styles.bubbleWrap}>
                                     <View style={[
                                         styles.bubble,
@@ -86,7 +93,7 @@ const ArchiveChat = () => {
                                         </Text>
                                     </View>
                                 </View>
-                            </View>
+                            </TouchableOpacity>
                         </React.Fragment>
                     );
                 })}
@@ -96,6 +103,13 @@ const ArchiveChat = () => {
                 <Ionicons name="archive-outline" size={16} color={COLORS.inkMuted} />
                 <Text style={styles.footerText}>Archived conversation</Text>
             </View>
+
+            <LookupSheet
+                visible={lookupText !== null}
+                initialText={lookupText ?? undefined}
+                initialLang="de"
+                onClose={() => setLookupText(null)}
+            />
         </SafeAreaView>
     );
 };
