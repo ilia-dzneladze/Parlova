@@ -21,36 +21,16 @@ def _split_bubbles(text: str) -> list[str]:
 
 _OFF_TOPIC_MARKERS = re.compile(
     r"(?i)"
-    r"(?:here(?:'s| is) (?:a|the|my)|"
-    r"sure[,!]? (?:here|I)|"
-    r"as an ai|I'?m an? ai|"
-    r"(?:step|instruction)s?\s*\d|"
-    r"ingredients?:|directions?:|"
+    r"(as an ai|I'?m an? ai language model|I cannot (?:help|assist|do)|"
     r"```|"
-    r"def |function |import |class )"
+    r"^\s*(?:def |function |import |class |#include|<\?php))"
 )
 
-JAILBREAK_WARNING = "⚠️ Ich bin dein Deutsch-Übungspartner! Lass uns weiter auf Deutsch reden. 😊"
+IN_CHARACTER_REDIRECT = "Haha, nee, dafür bin ich nicht da.|||Lass uns lieber weiter quatschen — was machst du gerade so?"
 
 
 def _looks_off_topic(text: str) -> bool:
-    if _OFF_TOPIC_MARKERS.search(text):
-        return True
-    english_words = {
-        "the", "is", "are", "was", "were", "have", "has", "had", "will",
-        "would", "could", "should", "can", "do", "does", "did", "not",
-        "and", "but", "or", "if", "then", "that", "this", "with", "for",
-        "from", "they", "them", "their", "your", "you", "we", "our",
-        "here", "there", "what", "when", "where", "how", "why", "who",
-        "sure", "yes", "no", "just", "about", "into", "some", "any",
-        "all", "each", "every", "most", "more", "very", "really",
-        "because", "since", "while", "before", "after", "during",
-    }
-    words = re.findall(r"[a-zA-ZäöüßÄÖÜ]+", text.lower())
-    if len(words) < 3:
-        return False
-    english_ratio = sum(1 for w in words if w in english_words) / len(words)
-    return english_ratio > 0.4
+    return bool(_OFF_TOPIC_MARKERS.search(text))
 
 
 _WRAP_UP_MIN = 10
@@ -97,14 +77,14 @@ def _generate_goodbye(chat_messages: list[dict], persona: Persona, model: str) -
     return result.choices[0].message.content or ""
 
 
-def send_message(question, history=[], persona: Persona | None = None, message_count: int = 0):
+def send_message(question, history=[], persona: Persona | None = None, message_count: int = 0, model: str | None = None):
     if persona is None:
         persona = Persona(
             name="Penelope",
             persona="Penelope is a 20-year-old French girl living in Berlin. She studies art, loves music, cafés, and is curious about everyone she meets.",
             question_freq=0.7,
         )
-    agent = create_texter(persona)
+    agent = create_texter(persona, model=model)
     start = time.time()
 
     chat_messages = [{"role": "system", "content": agent.system_prompt}]
@@ -130,7 +110,7 @@ def send_message(question, history=[], persona: Persona | None = None, message_c
     response_text = response.choices[0].message.content
 
     if _looks_off_topic(response_text):  # type: ignore
-        return [JAILBREAK_WARNING], "", False, time.time() - start
+        return _split_bubbles(IN_CHARACTER_REDIRECT), "", False, time.time() - start
 
     bubbles = _split_bubbles(response_text or "")
     if not bubbles:

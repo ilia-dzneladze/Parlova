@@ -53,7 +53,7 @@ _MAX_TOKENS: dict[Level, int] = {
     Level.C1: 500,
 }
 
-DEFAULT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+DEFAULT_MODEL = "llama-3.3-70b-versatile"
 
 
 def _build_scenario_block(scenario: str) -> str:
@@ -65,6 +65,23 @@ def _build_scenario_block(scenario: str) -> str:
     )
 
 
+def _question_freq_phrase(freq: float) -> str:
+    if freq <= 0.3:
+        return (
+            "You rarely end a reply with a question — only when you're genuinely curious. "
+            "Most of your replies just react and share, no question."
+        )
+    if freq < 0.6:
+        return (
+            "You sometimes end a reply with a question, but often you just react and share without one. "
+            "Don't interrogate the user."
+        )
+    return (
+        "You often end your replies with a question — you're a curious person who actually wants to know. "
+        "But not every single reply: leave some replies as a pure reaction or share, so it doesn't feel like an interview."
+    )
+
+
 def build_system_prompt_texter(persona: Persona) -> str:
     return SYSTEM_PROMPT_TEMPLATE.format(
         safety_block=SAFETY_BLOCK,
@@ -73,6 +90,7 @@ def build_system_prompt_texter(persona: Persona) -> str:
         persona_level=persona.level.value,
         scenario_block=_build_scenario_block(persona.scenario),
         level_rules=LEVEL_RULES[persona.level],
+        question_freq_phrase=_question_freq_phrase(persona.question_freq),
     )
 
 
@@ -84,9 +102,9 @@ class Agent:
         self.max_context = max_context
 
 
-def create_texter(persona: Persona, model: str = DEFAULT_MODEL) -> Agent:
+def create_texter(persona: Persona, model: str | None = None) -> Agent:
     return Agent(
-        model=model,
+        model=model or DEFAULT_MODEL,
         system_prompt=build_system_prompt_texter(persona),
         max_token=_MAX_TOKENS.get(persona.level, 400),
         max_context=5000,

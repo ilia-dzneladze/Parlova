@@ -125,6 +125,7 @@ class MessageRequest(BaseModel):
     history: list = []
     persona: Optional[PersonaRequest] = None
     message_count: int = 0
+    model: Optional[str] = None
 
 
 @app.post("/api/chat")
@@ -140,7 +141,7 @@ async def chat(request: MessageRequest):
             scenario=p.scenario,
         )
     bubbles, closing, wrap_up, elapsed = main_loop(
-        request.message, request.history, persona, request.message_count,
+        request.message, request.history, persona, request.message_count, request.model,
     )
     return {
         "bubbles": bubbles,

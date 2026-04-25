@@ -17,7 +17,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, useRoute, NavigationProp, RouteProp } from "@react-navigation/native";
 import uuid from "react-native-uuid";
-import { getMessages, saveMessages, appendMessage, archiveConversation, deleteConversation, markAsRead, markAsUnread, getConversation, getPersona, ChatMessage } from "../src/db/database";
+import { getMessages, saveMessages, appendMessage, archiveConversation, deleteConversation, markAsRead, markAsUnread, getConversation, getPersona, getSetting, ChatMessage } from "../src/db/database";
+import { DEFAULT_MODEL, MODELS } from "../src/utils/models";
 import { Conversation } from "../src/types/conversation";
 import { Persona } from "../src/types/persona";
 import { RootStackParamList } from "../src/types/navigation";
@@ -66,6 +67,17 @@ const TypingIndicator = () => (
 const Chat = () => {
     const navigator = useNavigation<NavigationProp<RootStackParamList>>();
     const route = useRoute<RouteProp<RootStackParamList, "Chat">>();
+    const goBackToChats = () => {
+        const nav = navigator as unknown as {
+            popTo?: (name: string, params?: unknown) => void;
+            navigate: (name: string, params?: unknown) => void;
+        };
+        if (typeof nav.popTo === "function") {
+            nav.popTo("Tabs", { screen: "Conversations" });
+        } else {
+            nav.navigate("Tabs", { screen: "Conversations" });
+        }
+    };
     const { conversationId, conversationName } = route.params;
     const scrollRef = useRef<ScrollView>(null);
     const messagesRef = useRef<Message[]>([]);
@@ -80,6 +92,16 @@ const Chat = () => {
     const [tappedId, setTappedId] = useState<string | null>(null);
     const [lookupText, setLookupText] = useState<string | null>(null);
     const [searchVisible, setSearchVisible] = useState(false);
+    const selectedModelRef = useRef<string>(DEFAULT_MODEL);
+
+    useEffect(() => {
+        (async () => {
+            const stored = await getSetting("selected_model");
+            if (stored && MODELS.some((m) => m.value === stored)) {
+                selectedModelRef.current = stored;
+            }
+        })();
+    }, []);
 
     useEffect(() => {
         mountedRef.current = true;
@@ -164,6 +186,7 @@ const Chat = () => {
                             message: trimmed,
                             history: currentHistory,
                             message_count: userMsgCount,
+                            model: selectedModelRef.current,
                             persona: currentPersona ? {
                                 name: currentPersona.name,
                                 persona: currentPersona.description,
@@ -235,7 +258,7 @@ const Chat = () => {
                             await archiveConversation(conversationId);
                             await deleteConversation(conversationId);
                             isEndedRef.current = true;
-                            navigator.goBack();
+                            goBackToChats();
                         }
                     }
                 } else {
@@ -298,7 +321,7 @@ const Chat = () => {
                         await archiveConversation(conversationId);
                         await deleteConversation(conversationId);
                         isEndedRef.current = true;
-                        navigator.goBack();
+                        goBackToChats();
                     },
                 },
             ],
@@ -315,7 +338,7 @@ const Chat = () => {
             <SafeAreaView style={styles.safeArea}>
                 {/* Header */}
                 <View style={styles.header}>
-                    <TouchableOpacity onPress={() => navigator.goBack()} style={styles.backButton}>
+                    <TouchableOpacity onPress={() => goBackToChats()} style={styles.backButton}>
                         <Ionicons name="chevron-back" size={28} color={SENT_COLOR} />
                     </TouchableOpacity>
                     <Text style={styles.headerTitle}>{conversationName}</Text>

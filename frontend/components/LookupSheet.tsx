@@ -156,9 +156,7 @@ const LookupSheet: React.FC<Props> = ({
         }),
     ).current;
 
-    const handleWordTap = async (clean: string, langOverride?: "de" | "en") => {
-        const src = langOverride ?? activeLang;
-        setSelectedWord(clean);
+    const fetchLookup = async (clean: string, src: "de" | "en") => {
         setLookupEntry(null);
         setLookupError(null);
         setLookupLoading(true);
@@ -201,6 +199,12 @@ const LookupSheet: React.FC<Props> = ({
         } finally {
             setLookupLoading(false);
         }
+    };
+
+    const handleWordTap = (clean: string, langOverride?: "de" | "en") => {
+        const src = langOverride ?? activeLang;
+        setSelectedWord(clean);
+        fetchLookup(clean, src);
     };
 
     const translateSentence = async (text: string, src: "de" | "en") => {
@@ -268,7 +272,7 @@ const LookupSheet: React.FC<Props> = ({
         setSentenceSaved(false);
 
         if (SINGLE_WORD_RE.test(trimmed)) {
-            handleWordTap(trimmed.toLowerCase(), searchLang);
+            fetchLookup(trimmed.toLowerCase(), searchLang);
         } else {
             setTimeout(() => translateSentence(trimmed, searchLang), 0);
         }
@@ -279,10 +283,11 @@ const LookupSheet: React.FC<Props> = ({
         Keyboard.dismiss();
         setActiveText(word);
         setActiveLang(searchLang);
+        setSelectedWord(null);
         setSentenceTranslation(null);
         setSentenceError(null);
         setSentenceSaved(false);
-        handleWordTap(word.toLowerCase(), searchLang);
+        fetchLookup(word.toLowerCase(), searchLang);
     };
 
     const handlePickSavedSentence = (s: SavedSentence) => {
@@ -332,6 +337,8 @@ const LookupSheet: React.FC<Props> = ({
     const tokens = activeText ? tokenize(activeText) : [];
     const hasContent = activeText.trim().length > 0;
     const showSuggestionPanel = searchInput.trim().length > 0;
+    const isSingleWordActive = hasContent && SINGLE_WORD_RE.test(activeText.trim()) && !selectedWord;
+    const showInlineLookup = isSingleWordActive && (lookupLoading || lookupEntry !== null || lookupError !== null);
 
     return (
         <Modal visible={visible} animationType="fade" transparent onRequestClose={close}>
@@ -435,7 +442,7 @@ const LookupSheet: React.FC<Props> = ({
                             </TouchableOpacity>
                         )}
 
-                        {hasContent && (
+                        {hasContent && !isSingleWordActive && (
                             <View style={styles.messageCard}>
                                 <Text style={styles.messageText}>
                                     {tokens.map((t, i) => {
@@ -452,6 +459,64 @@ const LookupSheet: React.FC<Props> = ({
                                         );
                                     })}
                                 </Text>
+                            </View>
+                        )}
+
+                        {showInlineLookup && (
+                            <View style={styles.inlineLookupCard}>
+                                {lookupLoading && <ActivityIndicator color={COLORS.primary} style={{ marginVertical: 12 }} />}
+                                {lookupError && <Text style={styles.errorText}>{lookupError}</Text>}
+                                {lookupEntry && (
+                                    <>
+                                        <Text style={styles.inlineWord}>{lookupEntry.word}</Text>
+                                        {(lookupEntry.partOfSpeech || lookupEntry.gender) && (
+                                            <Text style={styles.popupMeta}>
+                                                {[lookupEntry.partOfSpeech, lookupEntry.gender].filter(Boolean).join(" · ")}
+                                            </Text>
+                                        )}
+                                        {lookupEntry.headline && (
+                                            <Text style={styles.popupHeadline}>{lookupEntry.headline}</Text>
+                                        )}
+                                        <Text style={styles.sectionLabel}>Meaning</Text>
+                                        <View style={styles.transList}>
+                                            {lookupEntry.translations.map((t, i) => (
+                                                <View key={i} style={styles.transRow}>
+                                                    <Text style={styles.bullet}>•</Text>
+                                                    <Text style={styles.transText}>{t}</Text>
+                                                </View>
+                                            ))}
+                                        </View>
+                                        {lookupEntry.example && (
+                                            <>
+                                                <Text style={styles.sectionLabel}>Example</Text>
+                                                <Text style={styles.exampleText}>{lookupEntry.example}</Text>
+                                            </>
+                                        )}
+                                        {lookupEntry.root && (
+                                            <View style={styles.rootBlock}>
+                                                <Text style={styles.sectionLabel}>Root form</Text>
+                                                <Text style={styles.popupWordSmall}>{lookupEntry.root.word}</Text>
+                                                {(lookupEntry.root.partOfSpeech || lookupEntry.root.gender) && (
+                                                    <Text style={styles.popupMeta}>
+                                                        {[lookupEntry.root.partOfSpeech, lookupEntry.root.gender].filter(Boolean).join(" · ")}
+                                                    </Text>
+                                                )}
+                                                <View style={styles.transList}>
+                                                    {lookupEntry.root.translations.slice(0, 3).map((t, i) => (
+                                                        <View key={i} style={styles.transRow}>
+                                                            <Text style={styles.bullet}>•</Text>
+                                                            <Text style={styles.transText}>{t}</Text>
+                                                        </View>
+                                                    ))}
+                                                </View>
+                                                {lookupEntry.root.example && <Text style={styles.exampleText}>{lookupEntry.root.example}</Text>}
+                                            </View>
+                                        )}
+                                        {lookupEntry.source === "translate" && (
+                                            <Text style={styles.sourceHint}>via Google Translate</Text>
+                                        )}
+                                    </>
+                                )}
                             </View>
                         )}
 
@@ -714,6 +779,21 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         padding: 12,
         marginBottom: 10,
+    },
+    inlineLookupCard: {
+        backgroundColor: COLORS.bg,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: COLORS.border,
+        borderRadius: 12,
+        padding: 14,
+        marginBottom: 10,
+    },
+    inlineWord: {
+        fontFamily: FONTS.displayBold,
+        fontSize: 24,
+        color: COLORS.ink,
+        letterSpacing: -0.3,
+        marginBottom: 4,
     },
     messageText: { fontFamily: FONTS.sans, fontSize: 16, lineHeight: 24, color: COLORS.ink },
     wordToken: {

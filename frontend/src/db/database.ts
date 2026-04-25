@@ -128,6 +128,12 @@ export async function initDB(): Promise<void> {
         );
     `);
     await db.execAsync("DROP TABLE IF EXISTS dictionary_usage;");
+    await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY NOT NULL,
+            value TEXT NOT NULL
+        );
+    `);
 
     // ── Column migrations (safe to re-run) ──────────────────────────────────
     const addColumnSafe = async (table: string, column: string, def: string) => {
@@ -190,6 +196,20 @@ function rowToPersona(row: Record<string, unknown>): Persona {
         source: (row.source as "global" | "user") ?? "user",
         globalId: (row.global_id as string) || null,
     };
+}
+
+export async function getSetting(key: string): Promise<string | null> {
+    const row = await db.getFirstAsync<{ value: string }>(
+        "SELECT value FROM settings WHERE key = ?", key,
+    );
+    return row?.value ?? null;
+}
+
+export async function setSetting(key: string, value: string): Promise<void> {
+    await db.runAsync(
+        "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        key, value,
+    );
 }
 
 export async function getPersonas(): Promise<Persona[]> {

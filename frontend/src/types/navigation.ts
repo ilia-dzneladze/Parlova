@@ -1,5 +1,7 @@
+import { NavigatorScreenParams } from "@react-navigation/native";
+
 export type RootStackParamList = {
-    Tabs: undefined;
+    Tabs: NavigatorScreenParams<TabParamList> | undefined;
     Chat: { conversationId: string; conversationName: string };
     ArchiveList: undefined;
     ArchiveChat: { archiveId: string };
