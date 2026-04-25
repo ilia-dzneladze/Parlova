@@ -8,6 +8,7 @@ from typing import Optional
 
 from pydantic import BaseModel
 from .app import main_loop
+from .agents.corrector import correct_message, explain_correction
 from .llm_properties import Persona, Level, DEFAULT_SCENARIO
 from .translate import SUPPORTED_LANGUAGES, translate_text
 import yaml
@@ -149,6 +150,45 @@ async def chat(request: MessageRequest):
         "wrap_up": wrap_up,
         "time": elapsed,
     }
+
+
+class CorrectRequest(BaseModel):
+    message: str
+    history: list = []
+    level: str = "A1"
+    model: Optional[str] = None
+
+
+class ExplainRequest(BaseModel):
+    original: str
+    corrected: str
+    history: list = []
+    level: str = "A1"
+    model: Optional[str] = None
+
+
+@app.post("/api/correct")
+async def correct(request: CorrectRequest):
+    if not request.message.strip():
+        return {"status": "good"}
+    result = await asyncio.to_thread(
+        correct_message, request.message, request.history, request.level, request.model,
+    )
+    return result
+
+
+@app.post("/api/correct/explain")
+async def correct_explain(request: ExplainRequest):
+    if not request.original.strip() or not request.corrected.strip():
+        raise HTTPException(status_code=400, detail="original and corrected are required")
+    try:
+        explanation = await asyncio.to_thread(
+            explain_correction,
+            request.original, request.corrected, request.history, request.level, request.model,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Explanation failed: {e}")
+    return {"explanation": explanation}
 
 
 class TranslateRequest(BaseModel):

@@ -17,7 +17,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, useRoute, NavigationProp, RouteProp } from "@react-navigation/native";
 import uuid from "react-native-uuid";
-import { getMessages, saveMessages, appendMessage, archiveConversation, deleteConversation, markAsRead, markAsUnread, getConversation, getPersona, getSetting, ChatMessage } from "../src/db/database";
+import { getMessages, saveMessages, appendMessage, archiveConversation, deleteConversation, markAsRead, markAsUnread, getConversation, getPersona, getSetting, saveCorrection, saveCorrectionExplanation, getCorrection, getCorrectionsForConversation, MessageCorrection, ChatMessage } from "../src/db/database";
 import { DEFAULT_MODEL, MODELS } from "../src/utils/models";
 import { Conversation } from "../src/types/conversation";
 import { Persona } from "../src/types/persona";
@@ -26,6 +26,7 @@ import { Message, SENT_COLOR, RECV_COLOR, DEFAULT_GREETING, formatTime, isLastIn
 import { COLORS, FONTS } from "../constants/theme";
 import { API_BASE } from "../constants/api";
 import LookupSheet from "./LookupSheet";
+import CorrectionSheet from "./CorrectionSheet";
 
 const KEYBOARD_OFFSET = -30;
 
@@ -92,6 +93,10 @@ const Chat = () => {
     const [tappedId, setTappedId] = useState<string | null>(null);
     const [lookupText, setLookupText] = useState<string | null>(null);
     const [searchVisible, setSearchVisible] = useState(false);
+    const [corrections, setCorrections] = useState<Record<string, MessageCorrection>>({});
+    const [activeCorrectionId, setActiveCorrectionId] = useState<string | null>(null);
+    const [explainLoading, setExplainLoading] = useState(false);
+    const [explainError, setExplainError] = useState<string | null>(null);
     const selectedModelRef = useRef<string>(DEFAULT_MODEL);
 
     useEffect(() => {
@@ -122,6 +127,8 @@ const Chat = () => {
                 if (p) setCurrentPersona(p);
             }
             const saved = await getMessages(conversationId);
+            const savedCorrections = await getCorrectionsForConversation(conversationId);
+            setCorrections(savedCorrections);
 
             if (saved.length > 0) {
                 setMessages(saved.map((m) => ({
@@ -174,6 +181,39 @@ const Chat = () => {
         setIsTyping(true);
 
         const userMsgCount = currentHistory.filter((m) => m.sender === "user").length + 1;
+
+        const fetchCorrection = async () => {
+            try {
+                const res = await fetch(`${API_BASE}/api/correct`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
+                    body: JSON.stringify({
+                        message: trimmed,
+                        history: currentHistory,
+                        level: currentPersona?.level ?? "A1",
+                        model: selectedModelRef.current,
+                    }),
+                });
+                const data = await res.json();
+                const status: "good" | "corrected" = data.status === "corrected" ? "corrected" : "good";
+                const corrected: string | null = status === "corrected" ? String(data.corrected ?? "").trim() || null : null;
+                await saveCorrection(userMsg.id, status, corrected);
+                if (mountedRef.current) {
+                    setCorrections((prev) => ({
+                        ...prev,
+                        [userMsg.id]: {
+                            messageId: userMsg.id,
+                            status,
+                            correctedText: corrected,
+                            explanation: prev[userMsg.id]?.explanation ?? null,
+                            createdAt: Date.now(),
+                        },
+                    }));
+                }
+            } catch (e) {
+                console.warn("correction failed", e);
+            }
+        };
 
         const doFetch = async () => {
             const minDelay = new Promise(r => setTimeout(r, 1500));
@@ -295,7 +335,54 @@ const Chat = () => {
                 console.error(error);
             }
         };
+        fetchCorrection();
         doFetch();
+    };
+
+    const handleUserLongPress = async (msg: Message) => {
+        const correction = corrections[msg.id];
+        if (!correction || correction.status !== "corrected" || !correction.correctedText) return;
+
+        setActiveCorrectionId(msg.id);
+        setExplainError(null);
+
+        if (correction.explanation) {
+            setExplainLoading(false);
+            return;
+        }
+
+        setExplainLoading(true);
+        try {
+            const res = await fetch(`${API_BASE}/api/correct/explain`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
+                body: JSON.stringify({
+                    original: msg.content,
+                    corrected: correction.correctedText,
+                    history: messagesRef.current.filter((m) => m.id !== msg.id),
+                    level: currentPersona?.level ?? "A1",
+                    model: selectedModelRef.current,
+                }),
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            const explanation: string = String(data.explanation ?? "").trim();
+            if (!explanation) throw new Error("Empty explanation");
+            await saveCorrectionExplanation(msg.id, explanation);
+            if (mountedRef.current) {
+                setCorrections((prev) => ({
+                    ...prev,
+                    [msg.id]: { ...prev[msg.id], explanation },
+                }));
+            }
+        } catch (e) {
+            console.warn("explain failed", e);
+            if (mountedRef.current) {
+                setExplainError("Couldn't load the explanation. Please try again.");
+            }
+        } finally {
+            if (mountedRef.current) setExplainLoading(false);
+        }
     };
 
     const handleEndConversation = () => {
@@ -372,7 +459,7 @@ const Chat = () => {
                                 <TouchableOpacity
                                     activeOpacity={0.8}
                                     onPress={() => setTappedId(prev => prev === msg.id ? null : msg.id)}
-                                    onLongPress={() => setLookupText(msg.content)}
+                                    onLongPress={() => isUser ? handleUserLongPress(msg) : setLookupText(msg.content)}
                                     delayLongPress={350}
                                     style={[
                                         styles.messageRow,
@@ -390,6 +477,21 @@ const Chat = () => {
                                             <Text style={[styles.bubbleText, isUser ? styles.textSent : styles.textRecv]}>
                                                 {msg.content}
                                             </Text>
+                                            {isUser && corrections[msg.id] && (
+                                                <>
+                                                    <View style={styles.correctionDivider} />
+                                                    {corrections[msg.id].status === "good" ? (
+                                                        <View style={styles.correctionRow}>
+                                                            <Ionicons name="checkmark-circle" size={14} color={COLORS.white} />
+                                                            <Text style={styles.correctionGoodText}>Good Job!</Text>
+                                                        </View>
+                                                    ) : (
+                                                        <Text style={styles.correctionText}>
+                                                            {corrections[msg.id].correctedText}
+                                                        </Text>
+                                                    )}
+                                                </>
+                                            )}
                                         </View>
                                     </View>
 
@@ -442,6 +544,16 @@ const Chat = () => {
                     setSearchVisible(false);
                 }}
             />
+
+            <CorrectionSheet
+                visible={activeCorrectionId !== null}
+                onClose={() => setActiveCorrectionId(null)}
+                original={activeCorrectionId ? (messagesRef.current.find((m) => m.id === activeCorrectionId)?.content ?? "") : ""}
+                corrected={activeCorrectionId ? (corrections[activeCorrectionId]?.correctedText ?? "") : ""}
+                explanation={activeCorrectionId ? (corrections[activeCorrectionId]?.explanation ?? null) : null}
+                loading={explainLoading}
+                error={explainError}
+            />
         </KeyboardAvoidingView>
     );
 };
@@ -485,6 +597,21 @@ const styles = StyleSheet.create({
     bubbleText: { fontFamily: FONTS.sans, fontSize: 17, lineHeight: 22 },
     textSent: { color: COLORS.white },
     textRecv: { color: COLORS.ink },
+
+    correctionDivider: {
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: "rgba(255,255,255,0.45)",
+        marginVertical: 8,
+    },
+    correctionRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+    correctionGoodText: {
+        fontFamily: FONTS.sansMedium, fontSize: 13,
+        color: COLORS.white, opacity: 0.95,
+    },
+    correctionText: {
+        fontFamily: FONTS.sans, fontSize: 15, lineHeight: 20,
+        color: COLORS.white, opacity: 0.92, fontStyle: "italic",
+    },
 
     typingBubble: { flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 14, paddingHorizontal: 16 },
     typingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.inkMuted },

@@ -82,6 +82,16 @@ export async function initDB(): Promise<void> {
         );
     `);
     await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS message_corrections (
+            message_id TEXT PRIMARY KEY NOT NULL,
+            status TEXT NOT NULL,
+            corrected_text TEXT,
+            explanation TEXT,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (message_id) REFERENCES messages(id)
+        );
+    `);
+    await db.execAsync(`
         CREATE TABLE IF NOT EXISTS archived_conversations (
             id TEXT PRIMARY KEY NOT NULL,
             conversation_id TEXT NOT NULL,
@@ -292,6 +302,10 @@ export async function insertConversation(convo: Conversation): Promise<void> {
 
 export async function deleteConversation(id: string): Promise<void> {
     await db.withTransactionAsync(async () => {
+        await db.runAsync(
+            `DELETE FROM message_corrections WHERE message_id IN
+             (SELECT id FROM messages WHERE conversation_id = ?)`, id,
+        );
         await db.runAsync("DELETE FROM messages WHERE conversation_id = ?", id);
         await db.runAsync("DELETE FROM conversations WHERE id = ?", id);
     });
@@ -372,6 +386,72 @@ export async function appendMessage(msg: ChatMessage): Promise<void> {
     await updateLastMessage(msg.conversationId, msg.content, formatTimestampForList(msg.timestamp));
 }
 
+// ── Message Corrections ──────────────────────────────────────────────────────
+
+export type CorrectionStatus = "good" | "corrected";
+
+export type MessageCorrection = {
+    messageId: string;
+    status: CorrectionStatus;
+    correctedText: string | null;
+    explanation: string | null;
+    createdAt: number;
+};
+
+export async function saveCorrection(
+    messageId: string,
+    status: CorrectionStatus,
+    correctedText: string | null,
+): Promise<void> {
+    await db.runAsync(
+        `INSERT OR REPLACE INTO message_corrections (message_id, status, corrected_text, explanation, created_at)
+         VALUES (?, ?, ?, COALESCE((SELECT explanation FROM message_corrections WHERE message_id = ?), NULL), ?)`,
+        messageId, status, correctedText, messageId, Date.now(),
+    );
+}
+
+export async function saveCorrectionExplanation(messageId: string, explanation: string): Promise<void> {
+    await db.runAsync(
+        "UPDATE message_corrections SET explanation = ? WHERE message_id = ?",
+        explanation, messageId,
+    );
+}
+
+export async function getCorrection(messageId: string): Promise<MessageCorrection | null> {
+    const row = await db.getFirstAsync<Record<string, unknown>>(
+        "SELECT * FROM message_corrections WHERE message_id = ?", messageId,
+    );
+    if (!row) return null;
+    return {
+        messageId: row.message_id as string,
+        status: row.status as CorrectionStatus,
+        correctedText: (row.corrected_text as string) || null,
+        explanation: (row.explanation as string) || null,
+        createdAt: row.created_at as number,
+    };
+}
+
+export async function getCorrectionsForConversation(conversationId: string): Promise<Record<string, MessageCorrection>> {
+    const rows = await db.getAllAsync<Record<string, unknown>>(
+        `SELECT mc.* FROM message_corrections mc
+         INNER JOIN messages m ON m.id = mc.message_id
+         WHERE m.conversation_id = ?`,
+        conversationId,
+    );
+    const out: Record<string, MessageCorrection> = {};
+    for (const row of rows) {
+        const id = row.message_id as string;
+        out[id] = {
+            messageId: id,
+            status: row.status as CorrectionStatus,
+            correctedText: (row.corrected_text as string) || null,
+            explanation: (row.explanation as string) || null,
+            createdAt: row.created_at as number,
+        };
+    }
+    return out;
+}
+
 // ── Archive ──────────────────────────────────────────────────────────────────
 
 export async function archiveConversation(conversationId: string): Promise<string | null> {
@@ -418,6 +498,10 @@ export async function archiveConversation(conversationId: string): Promise<strin
             archiveId, conversationId,
         );
 
+        await db.runAsync(
+            `DELETE FROM message_corrections WHERE message_id IN
+             (SELECT id FROM messages WHERE conversation_id = ?)`, conversationId,
+        );
         await db.runAsync("DELETE FROM messages WHERE conversation_id = ?", conversationId);
     });
 
