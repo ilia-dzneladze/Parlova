@@ -11,6 +11,7 @@ export type ChatMessage = {
     content: string;
     responseTime?: number;
     timestamp: number;
+    liked?: boolean;
 };
 
 let db: SQLite.SQLiteDatabase;
@@ -154,6 +155,13 @@ export async function initDB(): Promise<void> {
         try { await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} REAL NOT NULL DEFAULT ${def}`); }
         catch { /* already exists */ }
     };
+    const addIntColumnSafe = async (table: string, column: string, def: number) => {
+        try { await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} INTEGER NOT NULL DEFAULT ${def}`); }
+        catch { /* already exists */ }
+    };
+
+    await addIntColumnSafe("messages", "liked", 0);
+    await addIntColumnSafe("archived_messages", "liked", 0);
 
     await addColumnSafe("conversations", "persona_id", "");
     await addColumnSafe("conversations", "scenario", "Just Chatting");
@@ -357,6 +365,7 @@ export async function getMessages(conversationId: string): Promise<ChatMessage[]
         content: row.content as string,
         responseTime: row.response_time as number | undefined,
         timestamp: row.timestamp as number,
+        liked: ((row.liked as number) ?? 0) === 1,
     }));
 }
 
@@ -365,9 +374,9 @@ export async function saveMessages(conversationId: string, messages: ChatMessage
         await db.runAsync("DELETE FROM messages WHERE conversation_id = ?", conversationId);
         for (const msg of messages) {
             await db.runAsync(
-                `INSERT INTO messages (id, conversation_id, sender, content, response_time, timestamp)
-                 VALUES (?, ?, ?, ?, ?, ?)`,
-                msg.id, conversationId, msg.sender, msg.content, msg.responseTime ?? null, msg.timestamp,
+                `INSERT INTO messages (id, conversation_id, sender, content, response_time, timestamp, liked)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                msg.id, conversationId, msg.sender, msg.content, msg.responseTime ?? null, msg.timestamp, msg.liked ? 1 : 0,
             );
         }
     });
@@ -379,11 +388,71 @@ export async function saveMessages(conversationId: string, messages: ChatMessage
 
 export async function appendMessage(msg: ChatMessage): Promise<void> {
     await db.runAsync(
-        `INSERT OR REPLACE INTO messages (id, conversation_id, sender, content, response_time, timestamp)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        msg.id, msg.conversationId, msg.sender, msg.content, msg.responseTime ?? null, msg.timestamp,
+        `INSERT OR REPLACE INTO messages (id, conversation_id, sender, content, response_time, timestamp, liked)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        msg.id, msg.conversationId, msg.sender, msg.content, msg.responseTime ?? null, msg.timestamp, msg.liked ? 1 : 0,
     );
     await updateLastMessage(msg.conversationId, msg.content, formatTimestampForList(msg.timestamp));
+}
+
+export async function setMessageLiked(messageId: string, liked: boolean, archived: boolean = false): Promise<void> {
+    const table = archived ? "archived_messages" : "messages";
+    await db.runAsync(`UPDATE ${table} SET liked = ? WHERE id = ?`, liked ? 1 : 0, messageId);
+}
+
+export type LikedMessage = {
+    id: string;
+    sender: "user" | "ai";
+    content: string;
+    timestamp: number;
+    conversationName: string;
+    avatarColor: string;
+    source: "active" | "archived";
+    conversationId: string;  // active conversation id or archive id
+};
+
+export async function getLikedMessages(): Promise<LikedMessage[]> {
+    const activeRows = await db.getAllAsync<Record<string, unknown>>(
+        `SELECT m.id, m.sender, m.content, m.timestamp, m.conversation_id,
+                c.name, c.avatar_color
+         FROM messages m
+         INNER JOIN conversations c ON c.id = m.conversation_id
+         WHERE m.liked = 1`,
+    );
+    const archivedRows = await db.getAllAsync<Record<string, unknown>>(
+        `SELECT am.id, am.sender, am.content, am.timestamp, am.archive_id,
+                ac.name, ac.avatar_color
+         FROM archived_messages am
+         INNER JOIN archived_conversations ac ON ac.id = am.archive_id
+         WHERE am.liked = 1`,
+    );
+    const out: LikedMessage[] = [];
+    for (const r of activeRows) {
+        out.push({
+            id: r.id as string,
+            sender: r.sender as "user" | "ai",
+            content: r.content as string,
+            timestamp: r.timestamp as number,
+            conversationName: r.name as string,
+            avatarColor: r.avatar_color as string,
+            source: "active",
+            conversationId: r.conversation_id as string,
+        });
+    }
+    for (const r of archivedRows) {
+        out.push({
+            id: r.id as string,
+            sender: r.sender as "user" | "ai",
+            content: r.content as string,
+            timestamp: r.timestamp as number,
+            conversationName: r.name as string,
+            avatarColor: r.avatar_color as string,
+            source: "archived",
+            conversationId: r.archive_id as string,
+        });
+    }
+    out.sort((a, b) => b.timestamp - a.timestamp);
+    return out;
 }
 
 // ── Message Corrections ──────────────────────────────────────────────────────
@@ -493,8 +562,8 @@ export async function archiveConversation(conversationId: string): Promise<strin
         );
 
         await db.runAsync(
-            `INSERT INTO archived_messages (id, archive_id, sender, content, response_time, timestamp)
-             SELECT id, ?, sender, content, response_time, timestamp FROM messages WHERE conversation_id = ?`,
+            `INSERT INTO archived_messages (id, archive_id, sender, content, response_time, timestamp, liked)
+             SELECT id, ?, sender, content, response_time, timestamp, liked FROM messages WHERE conversation_id = ?`,
             archiveId, conversationId,
         );
 
@@ -546,6 +615,7 @@ export async function getArchivedMessages(archiveId: string): Promise<ChatMessag
         content: row.content as string,
         responseTime: row.response_time as number | undefined,
         timestamp: row.timestamp as number,
+        liked: ((row.liked as number) ?? 0) === 1,
     }));
 }
 

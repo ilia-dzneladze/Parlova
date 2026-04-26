@@ -2,8 +2,9 @@ import json
 import re
 from typing import Literal, TypedDict
 
-from ..llm_properties import groq_client, DEFAULT_MODEL
-from ..prompts import CORRECTOR_BASIC_PROMPT, CORRECTOR_EXPLAIN_PROMPT
+from ..llm_properties import DEFAULT_MODEL
+from ..llm_client import chat_complete
+from ..prompts import get_corrector_prompts
 
 
 _VALID_LEVELS = {"A1", "A2", "B1", "B2", "C1"}
@@ -83,24 +84,25 @@ def correct_message(
         return {"status": "good"}
 
     level = _normalize_level(level)
-    system_prompt = CORRECTOR_BASIC_PROMPT.format(level=level)
+    resolved_model = model or DEFAULT_MODEL
+    prompts = get_corrector_prompts(resolved_model)
+    system_prompt = prompts.basic.format(level=level)
 
     messages = [{"role": "system", "content": system_prompt}]
     messages.extend(_build_context(history))
     messages.append({"role": "user", "content": user_message})
 
     try:
-        response = groq_client.chat.completions.create(
-            model=model or DEFAULT_MODEL,
-            messages=messages,  # type: ignore
+        raw = chat_complete(
+            messages,
+            model_choice=resolved_model,
             max_tokens=200,
             temperature=0.1,
-            response_format={"type": "json_object"},
+            json_mode=True,
         )
     except Exception:
         return {"status": "good"}
 
-    raw = response.choices[0].message.content or ""
     data = _extract_json(raw)
     if not data:
         return {"status": "good"}
@@ -127,7 +129,9 @@ def explain_correction(
 ) -> str:
     """Generate a detailed Markdown explanation of the correction."""
     level = _normalize_level(level)
-    system_prompt = CORRECTOR_EXPLAIN_PROMPT.format(level=level)
+    resolved_model = model or DEFAULT_MODEL
+    prompts = get_corrector_prompts(resolved_model)
+    system_prompt = prompts.explain.format(level=level)
 
     context = _build_context(history)
     context_str = "\n".join(
@@ -146,10 +150,9 @@ def explain_correction(
         {"role": "user", "content": user_block},
     ]
 
-    response = groq_client.chat.completions.create(
-        model=model or DEFAULT_MODEL,
-        messages=messages,  # type: ignore
+    return chat_complete(
+        messages,
+        model_choice=resolved_model,
         max_tokens=400,
         temperature=0.3,
-    )
-    return (response.choices[0].message.content or "").strip()
+    ).strip()

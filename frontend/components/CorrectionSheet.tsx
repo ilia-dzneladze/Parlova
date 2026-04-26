@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS, FONTS } from "../constants/theme";
+import { diffCorrection } from "../src/utils/diff";
 
 type Props = {
     visible: boolean;
@@ -127,7 +128,13 @@ const CorrectionSheet: React.FC<Props> = ({
                     <Text style={[styles.quote, styles.quoteOriginal]}>{original}</Text>
 
                     <Text style={styles.label}>Corrected</Text>
-                    <Text style={[styles.quote, styles.quoteCorrected]}>{corrected}</Text>
+                    <Text style={[styles.quote, styles.quoteCorrected]}>
+                        {diffCorrection(original, corrected).map((t, idx) => (
+                            <Text key={idx} style={t.changed ? styles.quoteCorrectedChanged : undefined}>
+                                {t.text}
+                            </Text>
+                        ))}
+                    </Text>
 
                     <View style={styles.divider} />
 
@@ -193,6 +200,12 @@ const styles = StyleSheet.create({
     },
     quoteOriginal: { backgroundColor: COLORS.bg },
     quoteCorrected: { backgroundColor: COLORS.primaryPale, color: COLORS.ink },
+    quoteCorrectedChanged: {
+        textDecorationLine: "underline",
+        textDecorationStyle: "solid",
+        fontFamily: FONTS.sansSemi,
+        color: COLORS.primaryDark,
+    },
     divider: { height: 1, backgroundColor: COLORS.border, marginVertical: 8 },
     loadingRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 12 },
     loadingText: { fontFamily: FONTS.sans, fontSize: 14, color: COLORS.inkMuted },

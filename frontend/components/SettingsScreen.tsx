@@ -51,7 +51,7 @@ const SettingsScreen = () => {
                         onPress={() => setPickerOpen(true)}
                         activeOpacity={0.5}
                     >
-                        <Text style={styles.rowLabel}>Conversation model</Text>
+                        <Text style={styles.rowLabel}>Model</Text>
                         <View style={styles.rowValue}>
                             <Text style={styles.rowValueText} numberOfLines={1}>
                                 {modelLabel(selectedModel)}

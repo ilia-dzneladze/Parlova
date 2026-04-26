@@ -5,6 +5,7 @@ import {
     Animated,
     Easing,
     KeyboardAvoidingView,
+    PanResponder,
     Platform,
     ScrollView,
     StatusBar,
@@ -17,18 +18,20 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, useRoute, NavigationProp, RouteProp } from "@react-navigation/native";
 import uuid from "react-native-uuid";
-import { getMessages, saveMessages, appendMessage, archiveConversation, deleteConversation, markAsRead, markAsUnread, getConversation, getPersona, getSetting, saveCorrection, saveCorrectionExplanation, getCorrection, getCorrectionsForConversation, MessageCorrection, ChatMessage } from "../src/db/database";
+import { getMessages, saveMessages, appendMessage, archiveConversation, deleteConversation, markAsRead, markAsUnread, getConversation, getPersona, getSetting, saveCorrection, saveCorrectionExplanation, getCorrection, getCorrectionsForConversation, setMessageLiked, MessageCorrection, ChatMessage } from "../src/db/database";
 import { DEFAULT_MODEL, MODELS } from "../src/utils/models";
 import { Conversation } from "../src/types/conversation";
 import { Persona } from "../src/types/persona";
 import { RootStackParamList } from "../src/types/navigation";
 import { Message, SENT_COLOR, RECV_COLOR, DEFAULT_GREETING, formatTime, isLastInGroup, isFirstInGroup, showTimestamp } from "../src/utils/chat";
+import { diffCorrection } from "../src/utils/diff";
 import { COLORS, FONTS } from "../constants/theme";
 import { API_BASE } from "../constants/api";
 import LookupSheet from "./LookupSheet";
 import CorrectionSheet from "./CorrectionSheet";
 
 const KEYBOARD_OFFSET = -30;
+const SWIPE_PEEK = 70;
 
 const TypingDot = ({ delay }: { delay: number }) => {
     const anim = useRef(new Animated.Value(0)).current;
@@ -90,7 +93,6 @@ const Chat = () => {
     const [messages, setMessages] = useState<Message[]>([]);
     const [message, setMessage] = useState<string>("");
     const [isTyping, setIsTyping] = useState(false);
-    const [tappedId, setTappedId] = useState<string | null>(null);
     const [lookupText, setLookupText] = useState<string | null>(null);
     const [searchVisible, setSearchVisible] = useState(false);
     const [corrections, setCorrections] = useState<Record<string, MessageCorrection>>({});
@@ -118,6 +120,24 @@ const Chat = () => {
     }, [messages]);
 
     useEffect(() => {
+        if (isEndedRef.current) return;
+        if (messages.length === 0) return;
+        const timer = setTimeout(() => {
+            const msgs: ChatMessage[] = messagesRef.current.map((m) => ({
+                id: m.id,
+                conversationId,
+                sender: m.sender,
+                content: m.content,
+                responseTime: m.responseTime,
+                timestamp: m.timestamp,
+                liked: m.liked,
+            }));
+            saveMessages(conversationId, msgs);
+        }, 1000);
+        return () => clearTimeout(timer);
+    }, [messages, conversationId]);
+
+    useEffect(() => {
         (async () => {
             await markAsRead(conversationId);
             const convo = await getConversation(conversationId);
@@ -137,6 +157,7 @@ const Chat = () => {
                     content: m.content,
                     responseTime: m.responseTime,
                     timestamp: m.timestamp,
+                    liked: m.liked,
                 })));
             } else {
                 setMessages([{
@@ -159,6 +180,7 @@ const Chat = () => {
                 content: m.content,
                 responseTime: m.responseTime,
                 timestamp: m.timestamp,
+                liked: m.liked,
             }));
             saveMessages(conversationId, msgs);
         });
@@ -339,6 +361,67 @@ const Chat = () => {
         doFetch();
     };
 
+    const lastTapRef = useRef<{ id: string; time: number } | null>(null);
+    const DOUBLE_TAP_MS = 400;
+
+    const toggleLike = async (msg: Message) => {
+        const next = !msg.liked;
+        setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, liked: next } : m)));
+        try {
+            await setMessageLiked(msg.id, next, false);
+        } catch (e) {
+            console.warn("toggleLike failed", e);
+        }
+    };
+
+    const handleBubblePress = (msg: Message) => {
+        const now = Date.now();
+        const last = lastTapRef.current;
+        if (last && last.id === msg.id && now - last.time < DOUBLE_TAP_MS) {
+            lastTapRef.current = null;
+            toggleLike(msg);
+            return;
+        }
+        lastTapRef.current = { id: msg.id, time: now };
+    };
+
+    // ── iMessage-style swipe-left to reveal timestamps on the right ───────────
+    const SWIPE_MAX = SWIPE_PEEK;
+    const swipeX = useRef(new Animated.Value(0)).current;
+    const panResponder = useRef(
+        PanResponder.create({
+            onStartShouldSetPanResponder: () => false,
+            onMoveShouldSetPanResponder: (_, g) =>
+                g.dx < -4 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+            onMoveShouldSetPanResponderCapture: (_, g) =>
+                g.dx < -4 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+            onPanResponderMove: (_, g) => {
+                const x = Math.max(-SWIPE_MAX, Math.min(0, g.dx));
+                swipeX.setValue(x);
+            },
+            onPanResponderRelease: () => {
+                Animated.spring(swipeX, {
+                    toValue: 0,
+                    useNativeDriver: true,
+                    bounciness: 0,
+                    speed: 18,
+                }).start();
+            },
+            onPanResponderTerminate: () => {
+                Animated.spring(swipeX, {
+                    toValue: 0,
+                    useNativeDriver: true,
+                    bounciness: 0,
+                    speed: 18,
+                }).start();
+            },
+        })
+    ).current;
+    const peekOpacity = swipeX.interpolate({
+        inputRange: [-SWIPE_MAX, -SWIPE_MAX * 0.3, 0],
+        outputRange: [1, 0.25, 0],
+    });
+
     const handleUserLongPress = async (msg: Message) => {
         const correction = corrections[msg.id];
         if (!correction || correction.status !== "corrected" || !correction.correctedText) return;
@@ -442,6 +525,7 @@ const Chat = () => {
                     style={styles.scrollView}
                     contentContainerStyle={styles.scrollContent}
                     onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+                    {...panResponder.panHandlers}
                 >
                     {messages.map((msg, i) => {
                         const isUser = msg.sender === "user";
@@ -456,18 +540,35 @@ const Chat = () => {
                                         {formatTime(msg.timestamp)}
                                     </Text>
                                 )}
-                                <TouchableOpacity
-                                    activeOpacity={0.8}
-                                    onPress={() => setTappedId(prev => prev === msg.id ? null : msg.id)}
-                                    onLongPress={() => isUser ? handleUserLongPress(msg) : setLookupText(msg.content)}
-                                    delayLongPress={350}
+                                <Animated.View
                                     style={[
                                         styles.messageRow,
                                         isUser ? styles.rowUser : styles.rowAI,
                                         { marginTop: first || tsVisible ? 8 : 2 },
+                                        isUser && { transform: [{ translateX: swipeX }] },
                                     ]}
                                 >
-                                    <View style={styles.bubbleWrap}>
+                                    <Animated.View
+                                        pointerEvents="none"
+                                        style={[
+                                            styles.peekTimestampWrap,
+                                            {
+                                                opacity: peekOpacity,
+                                                transform: isUser ? [] : [{ translateX: swipeX }],
+                                            },
+                                        ]}
+                                    >
+                                        <Text style={styles.peekTimestampText}>
+                                            {formatTime(msg.timestamp)}
+                                        </Text>
+                                    </Animated.View>
+                                <TouchableOpacity
+                                    activeOpacity={0.8}
+                                    onPress={() => handleBubblePress(msg)}
+                                    onLongPress={() => isUser ? handleUserLongPress(msg) : setLookupText(msg.content)}
+                                    delayLongPress={350}
+                                >
+                                    <View style={[styles.bubbleWrap, msg.liked && styles.bubbleWrapLiked]}>
                                         <View style={[
                                             styles.bubble,
                                             isUser ? styles.bubbleSent : styles.bubbleRecv,
@@ -487,20 +588,32 @@ const Chat = () => {
                                                         </View>
                                                     ) : (
                                                         <Text style={styles.correctionText}>
-                                                            {corrections[msg.id].correctedText}
+                                                            {diffCorrection(msg.content, corrections[msg.id].correctedText ?? "").map((t, idx) => (
+                                                                <Text key={idx} style={t.changed ? styles.correctionTextChanged : undefined}>
+                                                                    {t.text}
+                                                                </Text>
+                                                            ))}
                                                         </Text>
                                                     )}
                                                 </>
                                             )}
                                         </View>
-                                    </View>
 
-                                    {tappedId === msg.id && (
-                                        <Text style={styles.tappedTime}>
-                                            {formatTime(msg.timestamp)}
-                                        </Text>
-                                    )}
+                                        {msg.liked && (
+                                            <TouchableOpacity
+                                                activeOpacity={0.7}
+                                                onPress={() => toggleLike(msg)}
+                                                style={[
+                                                    styles.heartBadge,
+                                                    isUser ? styles.heartBadgeRight : styles.heartBadgeLeft,
+                                                ]}
+                                            >
+                                                <Ionicons name="heart" size={12} color={COLORS.primary} />
+                                            </TouchableOpacity>
+                                        )}
+                                    </View>
                                 </TouchableOpacity>
+                                </Animated.View>
                             </React.Fragment>
                         );
                     })}
@@ -586,11 +699,22 @@ const styles = StyleSheet.create({
         color: COLORS.inkMuted, marginTop: 16, marginBottom: 4,
     },
 
-    messageRow: { flexDirection: "column" },
+    messageRow: { flexDirection: "column", alignSelf: "stretch" },
     rowUser: { alignItems: "flex-end" },
     rowAI: { alignItems: "flex-start" },
 
     bubbleWrap: { maxWidth: "70%" },
+    bubbleWrapLiked: { marginBottom: 8 },
+    heartBadge: {
+        position: "absolute",
+        bottom: -8,
+        width: 22, height: 22, borderRadius: 11,
+        backgroundColor: COLORS.surface,
+        borderWidth: 1, borderColor: COLORS.border,
+        alignItems: "center", justifyContent: "center",
+    },
+    heartBadgeRight: { right: -6 },
+    heartBadgeLeft: { left: -6 },
     bubble: { borderRadius: 18, paddingVertical: 10, paddingHorizontal: 16 },
     bubbleSent: { backgroundColor: SENT_COLOR },
     bubbleRecv: { backgroundColor: RECV_COLOR },
@@ -612,11 +736,29 @@ const styles = StyleSheet.create({
         fontFamily: FONTS.sans, fontSize: 15, lineHeight: 20,
         color: COLORS.white, opacity: 0.92, fontStyle: "italic",
     },
+    correctionTextChanged: {
+        textDecorationLine: "underline",
+        textDecorationStyle: "solid",
+        fontFamily: FONTS.sansSemi,
+    },
 
     typingBubble: { flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 14, paddingHorizontal: 16 },
     typingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.inkMuted },
 
-    tappedTime: { fontSize: 11, color: COLORS.inkMuted, marginTop: 2, paddingHorizontal: 4 },
+    peekTimestampWrap: {
+        position: "absolute",
+        right: -SWIPE_PEEK,
+        top: 0, bottom: 0,
+        width: SWIPE_PEEK,
+        alignItems: "flex-start",
+        justifyContent: "center",
+        paddingLeft: 8,
+    },
+    peekTimestampText: {
+        fontFamily: FONTS.sans,
+        fontSize: 11,
+        color: COLORS.inkMuted,
+    },
 
     inputBar: {
         flexDirection: "row", alignItems: "flex-end", gap: 6,

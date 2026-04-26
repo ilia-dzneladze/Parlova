@@ -1,0 +1,4 @@
+Verbs: sein, haben, machen, gehen, kommen, sehen, hören, lesen, schreiben, sprechen, sagen, fragen, antworten, wohnen, leben, arbeiten, lernen, studieren, essen, trinken, kaufen, kochen, schlafen, fahren, laufen, spielen, helfen, lieben, mögen, wollen, können, müssen, dürfen, sollen, finden, denken, glauben, brauchen, geben, nehmen.
+Nouns: Tag, Woche, Jahr, Zeit, Uhr, Morgen, Abend, Nacht, Haus, Wohnung, Zimmer, Küche, Bad, Bett, Tisch, Stuhl, Tür, Fenster, Auto, Bus, Zug, Stadt, Land, Straße, Schule, Universität, Arbeit, Büro, Geld, Essen, Wasser, Kaffee, Tee, Brot, Familie, Vater, Mutter, Bruder, Schwester, Freund.
+Adjectives: gut, schlecht, schön, groß, klein, neu, alt, jung, kalt, warm, heiß, viel, wenig, lang, kurz, schnell, langsam, einfach, schwer, müde.
+Function words: und, aber, oder, denn, auch, nur, schon, noch, immer, oft, manchmal, nie, heute, gestern, morgen, hier, da, dort, jetzt, dann.

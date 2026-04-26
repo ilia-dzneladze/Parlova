@@ -4,6 +4,7 @@ export type Message = {
     content: string;
     responseTime?: number;
     timestamp: number;
+    liked?: boolean;
 };
 
 import { COLORS } from "../../constants/theme";

@@ -1,4 +1,6 @@
-groq
+anthropic[vertex]
+openai
+google-genai
 python-dotenv
 fastapi
 uvicorn[standard]

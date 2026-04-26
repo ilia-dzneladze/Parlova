@@ -1,15 +1,12 @@
 import os
-from groq import Groq
 from dotenv import load_dotenv
 
 load_dotenv()
 
-groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-
 from dataclasses import dataclass, field
 from enum import Enum
 
-from .prompts import SAFETY_BLOCK, SYSTEM_PROMPT_TEMPLATE, LEVEL_RULES_RAW
+from .prompts import family_for_model, get_texter_prompts
 
 DEFAULT_SCENARIO = "Just Chatting"
 
@@ -37,14 +34,6 @@ class Persona:
     scenario: str = field(default=DEFAULT_SCENARIO)
 
 
-LEVEL_RULES: dict[Level, str] = {
-    Level.A1: LEVEL_RULES_RAW["A1"],
-    Level.A2: LEVEL_RULES_RAW["A2"],
-    Level.B1: LEVEL_RULES_RAW["B1"],
-    Level.B2: LEVEL_RULES_RAW["B2"],
-    Level.C1: LEVEL_RULES_RAW["C1"],
-}
-
 _MAX_TOKENS: dict[Level, int] = {
     Level.A1: 350,
     Level.A2: 350,
@@ -53,7 +42,32 @@ _MAX_TOKENS: dict[Level, int] = {
     Level.C1: 500,
 }
 
-DEFAULT_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_MODEL = os.getenv("ACTIVE_MODEL", "gemini")
+
+
+@dataclass(frozen=True)
+class SamplingConfig:
+    temperature: float | None = None
+    top_p: float | None = None
+
+
+_SAMPLING: dict[str, SamplingConfig] = {
+    "scout": SamplingConfig(),
+    "llama33": SamplingConfig(temperature=0.85, top_p=0.9),
+}
+
+
+def sampling_for(model: str | None) -> SamplingConfig:
+    return _SAMPLING.get(family_for_model(model), SamplingConfig())
+
+
+def sampling_kwargs(sampling: SamplingConfig) -> dict:
+    out: dict = {}
+    if sampling.temperature is not None:
+        out["temperature"] = sampling.temperature
+    if sampling.top_p is not None:
+        out["top_p"] = sampling.top_p
+    return out
 
 
 def _build_scenario_block(scenario: str) -> str:
@@ -82,30 +96,41 @@ def _question_freq_phrase(freq: float) -> str:
     )
 
 
-def build_system_prompt_texter(persona: Persona) -> str:
-    return SYSTEM_PROMPT_TEMPLATE.format(
-        safety_block=SAFETY_BLOCK,
+def build_system_prompt_texter(persona: Persona, model: str | None = None) -> str:
+    prompts = get_texter_prompts(model)
+    return prompts.system_template.format(
+        safety_block=prompts.safety_block,
         persona_name=persona.name,
         persona_persona=persona.persona,
         persona_level=persona.level.value,
         scenario_block=_build_scenario_block(persona.scenario),
-        level_rules=LEVEL_RULES[persona.level],
+        level_rules=prompts.level_rules[persona.level.value],
         question_freq_phrase=_question_freq_phrase(persona.question_freq),
     )
 
 
 class Agent:
-    def __init__(self, model: str, system_prompt: str, max_token: int, max_context: int = 0):
+    def __init__(
+        self,
+        model: str,
+        system_prompt: str,
+        max_token: int,
+        sampling: SamplingConfig,
+        max_context: int = 0,
+    ):
         self.model = model
         self.system_prompt = system_prompt
         self.max_token = max_token
+        self.sampling = sampling
         self.max_context = max_context
 
 
 def create_texter(persona: Persona, model: str | None = None) -> Agent:
+    resolved = model or DEFAULT_MODEL
     return Agent(
-        model=model or DEFAULT_MODEL,
-        system_prompt=build_system_prompt_texter(persona),
+        model=resolved,
+        system_prompt=build_system_prompt_texter(persona, resolved),
         max_token=_MAX_TOKENS.get(persona.level, 400),
+        sampling=sampling_for(resolved),
         max_context=5000,
     )

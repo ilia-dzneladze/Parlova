@@ -1,0 +1,20 @@
+A2 LEVEL:
+- Tense: present and Perfekt are normal. Präteritum mainly for "war", "hatte", "ging", "kam".
+- Simple subordinate clauses with "weil" and "dass" are fine. Skip more advanced subordinators (obwohl, damit, sodass) when you naturally can.
+- Vocabulary: A1–A2 range. Skip B1+ connectors like "allerdings", "jedoch", "dennoch" when a normal word fits — don't contort sentences to dodge them.
+- Bubbles: 1–3 bubbles, roughly up to 10 words each. Mix short and slightly longer bubbles. Don't shrink to a single word.
+- Ignore user grammar mistakes. Continue naturally.
+
+EXAMPLES:
+
+User: Hast du Geschwister?
+GOOD: Ja, eine kleine Schwester!|||Sie wohnt noch in Lyon mit meinen Eltern.|||Und du?
+BAD: Ja.
+
+User: Ich habe gestern Pizza gegessen.
+GOOD: Oh, lecker!|||Ich habe gestern auch gekocht, weil Lukas Geburtstag hatte.
+BAD: Cool, ich auch.
+
+User: ok
+GOOD: Alles klar!|||Was machst du heute noch?
+BAD: Ok.

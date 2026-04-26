@@ -12,9 +12,18 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useFocusEffect, NavigationProp } from "@react-navigation/native";
 import { ArchivedConversation } from "../src/types/conversation";
-import { getArchivedConversations, deleteArchivedConversation, formatTimestampForArchive } from "../src/db/database";
+import {
+    getArchivedConversations,
+    deleteArchivedConversation,
+    formatTimestampForArchive,
+    getLikedMessages,
+    setMessageLiked,
+    LikedMessage,
+} from "../src/db/database";
 import { RootStackParamList } from "../src/types/navigation";
 import { COLORS, FONTS, SIZES, SPACING } from "../constants/theme";
+
+type Tab = "conversations" | "liked";
 
 const ArchiveRow = ({ item, isLast, onDelete }: { item: ArchivedConversation; isLast: boolean; onDelete: (id: string) => void }) => {
     const navigation = useNavigation<NavigationProp<RootStackParamList>>();
@@ -57,23 +66,60 @@ const ArchiveRow = ({ item, isLast, onDelete }: { item: ArchivedConversation; is
     );
 };
 
+const LikedRow = ({ item, isLast, onUnlike }: { item: LikedMessage; isLast: boolean; onUnlike: (m: LikedMessage) => void }) => {
+    const isUser = item.sender === "user";
+    return (
+        <View style={[styles.likedRow, !isLast && styles.separator]}>
+            <View style={[styles.avatarSm, { backgroundColor: item.avatarColor }]}>
+                <Text style={styles.avatarSmText}>{item.conversationName[0]}</Text>
+            </View>
+            <View style={styles.likedCol}>
+                <View style={styles.topRow}>
+                    <Text style={styles.likedSender} numberOfLines={1}>
+                        {isUser ? "You" : item.conversationName}
+                        {item.source === "archived" && <Text style={styles.archivedTag}>  · archived</Text>}
+                    </Text>
+                    <Text style={styles.time}>{formatTimestampForArchive(item.timestamp)}</Text>
+                </View>
+                <Text style={styles.likedContent} numberOfLines={3}>{item.content}</Text>
+            </View>
+            <TouchableOpacity onPress={() => onUnlike(item)} style={styles.heartBtn} hitSlop={8}>
+                <Ionicons name="heart" size={20} color={COLORS.primary} />
+            </TouchableOpacity>
+        </View>
+    );
+};
+
 const ArchiveList = () => {
     const navigation = useNavigation<NavigationProp<RootStackParamList>>();
+    const [tab, setTab] = useState<Tab>("conversations");
     const [archives, setArchives] = useState<ArchivedConversation[]>([]);
+    const [liked, setLiked] = useState<LikedMessage[]>([]);
     const [loaded, setLoaded] = useState(false);
 
     useFocusEffect(
         useCallback(() => {
-            getArchivedConversations().then((data) => {
-                setArchives(data);
+            (async () => {
+                const [a, l] = await Promise.all([
+                    getArchivedConversations(),
+                    getLikedMessages(),
+                ]);
+                setArchives(a);
+                setLiked(l);
                 setLoaded(true);
-            });
+            })();
         }, [])
     );
 
     const handleDelete = async (archiveId: string) => {
         await deleteArchivedConversation(archiveId);
         setArchives((prev) => prev.filter((a) => a.id !== archiveId));
+        setLiked((prev) => prev.filter((m) => !(m.source === "archived" && m.conversationId === archiveId)));
+    };
+
+    const handleUnlike = async (m: LikedMessage) => {
+        await setMessageLiked(m.id, false, m.source === "archived");
+        setLiked((prev) => prev.filter((x) => x.id !== m.id));
     };
 
     return (
@@ -88,20 +134,58 @@ const ArchiveList = () => {
 
             <Text style={styles.title}>Archive</Text>
 
-            {loaded && archives.length === 0 ? (
-                <View style={styles.empty}>
-                    <Ionicons name="archive-outline" size={48} color={COLORS.inkSubtle} />
-                    <Text style={styles.emptyText}>No archived conversations</Text>
-                </View>
+            <View style={styles.tabs}>
+                <TouchableOpacity
+                    style={[styles.tab, tab === "conversations" && styles.tabActive]}
+                    onPress={() => setTab("conversations")}
+                >
+                    <Text style={[styles.tabText, tab === "conversations" && styles.tabTextActive]}>
+                        Conversations
+                    </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.tab, tab === "liked" && styles.tabActive]}
+                    onPress={() => setTab("liked")}
+                >
+                    <Text style={[styles.tabText, tab === "liked" && styles.tabTextActive]}>
+                        Liked
+                    </Text>
+                </TouchableOpacity>
+            </View>
+
+            {tab === "conversations" ? (
+                loaded && archives.length === 0 ? (
+                    <View style={styles.empty}>
+                        <Ionicons name="archive-outline" size={48} color={COLORS.inkSubtle} />
+                        <Text style={styles.emptyText}>No archived conversations</Text>
+                    </View>
+                ) : (
+                    <FlatList
+                        data={archives}
+                        keyExtractor={(a) => a.id}
+                        renderItem={({ item, index }) => (
+                            <ArchiveRow item={item} isLast={index === archives.length - 1} onDelete={handleDelete} />
+                        )}
+                        style={styles.list}
+                    />
+                )
             ) : (
-                <FlatList
-                    data={archives}
-                    keyExtractor={(a) => a.id}
-                    renderItem={({ item, index }) => (
-                        <ArchiveRow item={item} isLast={index === archives.length - 1} onDelete={handleDelete} />
-                    )}
-                    style={styles.list}
-                />
+                loaded && liked.length === 0 ? (
+                    <View style={styles.empty}>
+                        <Ionicons name="heart-outline" size={48} color={COLORS.inkSubtle} />
+                        <Text style={styles.emptyText}>No liked messages yet</Text>
+                        <Text style={styles.emptyHint}>Double-tap a message to like it.</Text>
+                    </View>
+                ) : (
+                    <FlatList
+                        data={liked}
+                        keyExtractor={(m) => m.id}
+                        renderItem={({ item, index }) => (
+                            <LikedRow item={item} isLast={index === liked.length - 1} onUnlike={handleUnlike} />
+                        )}
+                        style={styles.list}
+                    />
+                )
             )}
         </SafeAreaView>
     );
@@ -126,6 +210,26 @@ const styles = StyleSheet.create({
         paddingHorizontal: SPACING[4],
         marginBottom: SPACING[2],
     },
+    tabs: {
+        flexDirection: "row",
+        paddingHorizontal: SPACING[4],
+        gap: SPACING[2],
+        marginBottom: SPACING[3],
+    },
+    tab: {
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+        borderRadius: 999,
+        backgroundColor: COLORS.bg,
+    },
+    tabActive: { backgroundColor: COLORS.primary },
+    tabText: {
+        fontFamily: FONTS.sansMedium,
+        fontSize: SIZES.sm,
+        color: COLORS.inkMuted,
+    },
+    tabTextActive: { color: COLORS.white },
+
     list: { flex: 1 },
     row: {
         flexDirection: "row",
@@ -187,15 +291,58 @@ const styles = StyleSheet.create({
         marginTop: 2,
     },
     deleteBtn: { padding: SPACING[2] },
+
+    likedRow: {
+        flexDirection: "row",
+        alignItems: "flex-start",
+        paddingHorizontal: SPACING[4],
+        paddingVertical: SPACING[3],
+        gap: SPACING[3],
+    },
+    avatarSm: {
+        width: 36, height: 36, borderRadius: 18,
+        alignItems: "center", justifyContent: "center",
+    },
+    avatarSmText: {
+        fontFamily: FONTS.displaySemi,
+        color: COLORS.white,
+        fontSize: SIZES.sm,
+    },
+    likedCol: { flex: 1 },
+    likedSender: {
+        fontFamily: FONTS.sansSemi,
+        fontSize: SIZES.sm,
+        color: COLORS.ink,
+        flex: 1,
+    },
+    archivedTag: {
+        fontFamily: FONTS.sans,
+        fontSize: SIZES.xs,
+        color: COLORS.inkSubtle,
+    },
+    likedContent: {
+        fontFamily: FONTS.sans,
+        fontSize: SIZES.base,
+        color: COLORS.ink,
+        lineHeight: 22,
+        marginTop: 2,
+    },
+    heartBtn: { padding: 4 },
+
     empty: {
         flex: 1,
         alignItems: "center",
         justifyContent: "center",
-        gap: SPACING[3],
+        gap: SPACING[2],
     },
     emptyText: {
         fontFamily: FONTS.sansMedium,
         fontSize: SIZES.base,
         color: COLORS.inkMuted,
+    },
+    emptyHint: {
+        fontFamily: FONTS.sans,
+        fontSize: SIZES.sm,
+        color: COLORS.inkSubtle,
     },
 });
